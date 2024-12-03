@@ -59,3 +59,8 @@ if(AltairXVM_ELF_SUPPORT)
 		message(WARNING "ELF loading disabled, could not found LLVM.")
 	endif()
 endif()
+
+if(BUILD_TESTING)
+	include(CTest)
+	add_subdirectory(tests)
+endif()
