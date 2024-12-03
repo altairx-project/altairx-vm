@@ -64,7 +64,7 @@ void AxCore::execute_unit_fp(Register rega, Register regb, Register regc, uint32
         execute_unit_falu(rega, regb, regc, unit, imm24);
         break;
     default:
-        assert(false && "");
+        ax_panic("");
     }
 }
 

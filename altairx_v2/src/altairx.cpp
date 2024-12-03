@@ -37,6 +37,8 @@ void AltairX::load_kernel(const std::filesystem::path& path)
 namespace
 {
 
+#ifdef HAS_LLVM
+
 const AxELFSymbol& get_entry_point(const AxELFFile& elf, std::string_view entry_point_name)
 {
     const AxELFSymbol* entry_point_symbol{};
@@ -105,6 +107,8 @@ std::vector<AxSectionBounds> load_sections(const AxELFFile& elf, const AxELFSymb
     return output;
 }
 
+#endif //  HAS_LLVM
+
 }
 
 void AltairX::load_program(const std::filesystem::path& path, std::string_view entry_point_name)
@@ -137,6 +141,7 @@ void AltairX::load_program(const std::filesystem::path& path, std::string_view e
 namespace
 {
 
+#ifdef HAS_LLVM
 uint64_t setup_stack(AxMemory& memory, AxCore& core, const std::vector<AxSectionBounds>& bounds)
 {
     AxSectionBounds total_bounds{std::numeric_limits<uint64_t>::max(), 0};
@@ -166,6 +171,7 @@ void load_host_argv(AxMemory& memory, AxCore& core, std::string_view program_nam
 {
     const auto ax_alloca = [&core](uint64_t size)
     {
+        size = ((size / 8) + 1) * 8; // align allocation size on 8 bytes
         return core.registers().gpi[0] -= size;
     };
 
@@ -204,12 +210,12 @@ void write_entry_code(AxMemory& memory, AxCore& core, uint64_t main_addr, uint64
 
     const std::array<std::uint32_t, 8> entry_code =
         {
-            0x000000FBu | ((main_pc & 0x00FFFFFFu) << 8),    // call @main; init LR too to come back here after main returns!
-            0x00000000u | (((main_pc >> 24) & 0x07Fu) << 8), // moveix @main
-            0x00000000u,                                     // nop
+            1u | AX_EXE_BRU_CALL << 1 | ((main_pc & 0x00FFFFFFu) << 8), // call @main; init LR too to come back here after main returns!
+            0u | (((main_pc >> 24) & 0x00FFFFFFu) << 8), // moveix @main
             0x08100620u,                                     // add.d r2, r1, 0; exit code, returned by main
-            0x00000302u,                                     // movei r1, 3; exit syscall
-            0x000004FEu,                                     // syscall
+            0x07000302u,                                     // movei r1, 3; exit syscall
+            1u | AX_EXE_ALU_MOVEIX << 1,                                     // nop
+            0u | AX_EXE_CU_SYSCALL << 1,                                     // syscall
             0x00000000u,                                     // nop
             0x00000000u,                                     // nop
         };
@@ -225,6 +231,8 @@ void write_entry_code(AxMemory& memory, AxCore& core, uint64_t main_addr, uint64
     std::memcpy(memory.map(core, AxMemory::WRAM_BEGIN + entry_addr), entry_code.data(), entry_code.size() * 4);
     core.registers().pc = entry_addr / 4ull;
 }
+
+#endif
 
 }
 

@@ -16,4 +16,13 @@ template<typename... Args>
     throw std::runtime_error{error.str()};
 }
 
+template<typename... Args>
+void ax_check(bool b, Args&&... args [[maybe_unused]])
+{
+    if(!b)
+    {
+        ax_panic(std::forward<Args>(args)...);
+    }
+}
+
 #endif

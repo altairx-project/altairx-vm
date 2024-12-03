@@ -8,18 +8,18 @@
 
 inline const std::array<uint64_t, 4> sizemask =
 {
-0x00000000000000FFull,
-0x000000000000FFFFull,
-0x00000000FFFFFFFFull,
-0xFFFFFFFFFFFFFFFFull,
+  0x00000000000000FFull,
+  0x000000000000FFFFull,
+  0x00000000FFFFFFFFull,
+  0xFFFFFFFFFFFFFFFFull,
 };
 
 inline const std::array<uint64_t, 4> signmask =
 {
-0xFFFFFFFFFFFFFF00ull,
-0xFFFFFFFFFFFF0000ull,
-0xFFFFFFFF00000000ull,
-0x0000000000000000ull,
+  0xFFFFFFFFFFFFFF00ull,
+  0xFFFFFFFFFFFF0000ull,
+  0xFFFFFFFF00000000ull,
+  0x0000000000000000ull,
 };
 
 inline uint16_t float_to_half(float fval)
@@ -67,6 +67,53 @@ inline float half_to_float(uint32_t half)
     std::memcpy(&fval, &xval, sizeof(xval));
 
     return fval;
+}
+
+template<unsigned N>
+constexpr inline bool is_int(int64_t x [[maybe_unused]] ) noexcept
+{
+    if constexpr(N == 8)
+    {
+        return static_cast<int8_t>(x) == x;
+    }
+    if constexpr(N == 16)
+    {
+        return static_cast<int16_t>(x) == x;
+    }
+    if constexpr(N == 32)
+    {
+        return static_cast<int32_t>(x) == x;
+    }
+    if constexpr(N < 64)
+    {
+        return -(1ll << (N - 1)) <= x && x < (1ll << (N - 1));
+    }
+
+    return true;
+}
+
+template<unsigned N>
+constexpr inline bool is_uint(uint64_t x [[maybe_unused]] ) noexcept
+{
+    static_assert(N > 0, "isUInt<0> doesn't make sense");
+    if constexpr(N == 8)
+    {
+        return static_cast<uint8_t>(x) == x;
+    }
+    if constexpr(N == 16)
+    {
+        return static_cast<uint16_t>(x) == x;
+    }
+    if constexpr(N == 32)
+    {
+        return static_cast<uint32_t>(x) == x;
+    }
+    if constexpr(N < 64)
+    {
+        return x < (1ull << (N));
+    }
+
+    return true;
 }
 
 #endif

@@ -24,8 +24,9 @@ public:
     static constexpr uint32_t IO_WRITE = 2;
 
     static constexpr uint32_t Z_MASK = 0x01;
-    static constexpr uint32_t O_MASK = 0x02;
+    static constexpr uint32_t C_MASK = 0x02;
     static constexpr uint32_t N_MASK = 0x04;
+    static constexpr uint32_t O_MASK = 0x08;
 
     static constexpr uint64_t MAX_CORES = 64;
     static constexpr uint64_t IREG_COUNT = 64;
@@ -101,18 +102,13 @@ public:
     }
 
 private:
-    void do_store(const void* src, uint64_t addr, uint32_t size);
-    void do_load(void* dest, uint64_t addr, uint32_t size);
+    void do_store(uint64_t src, uint64_t addr, uint32_t size);
+    uint64_t do_load(uint64_t addr, uint32_t size);
 
     void io_read(uint64_t offset, void* reg);
     void io_write(uint64_t offset, void* reg);
 
     void execute_unit(AxOpcode opcode, uint32_t slot, uint64_t imm24);
-
-    // if imm version, return imm with extended imm24
-    // otherwise dereference reg and apply shift (must be 0 if not sub or add)
-    // also works for mdu
-    uint64_t alu_src2_value(AxOpcode op, Register reg, uint64_t imm24) const noexcept;
 
     /*
     UNIT ID |    UNIT NAME
@@ -130,7 +126,6 @@ private:
     void execute_mdu(AxOpcode op, uint64_t imm24);
     void execute_lsu(AxOpcode op, uint64_t imm24);
     void execute_bru(AxOpcode op, uint64_t imm24);
-    void execute_bru_other(uint32_t op);
     void execute_fpu(AxOpcode op, uint64_t imm24);
     void execute_efu(AxOpcode op, uint64_t imm24);
     void execute_cu(AxOpcode op, uint64_t imm24);

@@ -52,12 +52,12 @@ public:
         store(core, &val, offset, sizeof(T));
     }
 
-    std::uint64_t wram_size() const noexcept
+    uint64_t wram_size() const noexcept
     {
         return m_wram.size();
     }
 
-    std::uint64_t wram_bytesize() const noexcept
+    uint64_t wram_bytesize() const noexcept
     {
         return m_wram.size() * 8;
     }
