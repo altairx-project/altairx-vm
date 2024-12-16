@@ -2,8 +2,8 @@
 #include <cstdlib>
 #include <vector>
 
-#include <altairx.hpp>
-#include <core.hpp>
+#include "core.hpp"
+#include "memory.hpp"
 
 void AxCore::execute_syscall()
 {

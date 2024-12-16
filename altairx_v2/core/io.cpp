@@ -1,7 +1,6 @@
+#include "core.hpp"
 
 #include <vector>
-
-#include "altairx.hpp"
 
 void AxCore::io_read(uint64_t offset, void* reg)
 {

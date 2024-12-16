@@ -9,13 +9,16 @@
 #include <optional>
 
 #include "altairx.hpp"
-#include "panic.hpp"
+
+#include <panic.hpp>
+#include <altairx_gui.hpp>
 
 namespace
 {
 
 struct AxParameters
 {
+    bool gui{};
     std::size_t core_count{1};
     std::size_t wram_size{16};
     std::size_t spmt_size{256};
@@ -65,7 +68,12 @@ AxParameters parse_args(int argc, char* argv[])
     // skip first arg
     for(std::size_t i{1}; i < args.size(); ++i)
     {
-        if(args[i] == "-ncore")
+        if(args[i] == "-gui")
+        {
+            output.gui = true;
+            ++i;
+        }
+        else if(args[i] == "-ncore")
         {
             output.core_count = static_cast<std::size_t>(get_value_for_arg(args, i, args.size()));
             ++i;
@@ -120,7 +128,7 @@ AxParameters parse_args(int argc, char* argv[])
         }
     }
 
-    if(output.executable.empty())
+    if(output.executable.empty() && !output.gui)
     {
         ax_panic("Missing executable file");
     }
@@ -153,8 +161,13 @@ void print_usage()
 
 int run_vm(const AxParameters& parameters)
 {
-    AltairX altairx{parameters.wram_size, parameters.spmt_size, parameters.spm2_size};
+    if(parameters.gui)
+    {
+        AltairXGUI gui{};
+        return gui.run();
+    }
 
+    AltairX altairx{parameters.wram_size, parameters.spmt_size, parameters.spm2_size};
     if(parameters.hosted)
     {
         altairx.load_hosted_program(parameters.executable, parameters.forwarded_args);

@@ -1,43 +1,12 @@
-#include <chrono>
-#include <iostream>
-#include <fstream>
-#include <vector>
+#include "elf_loader.hpp"
 
-#ifdef HAS_LLVM
-    #include <elf.hpp>
-#endif
+#include <panic.hpp>
 
-#include "altairx.hpp"
-#include "panic.hpp"
-
-AltairX::AltairX(size_t nwram, size_t nspmt, size_t nspm2)
-    : m_memory{nwram, nspmt, nspm2}
-    , m_core{m_memory}
-    , m_wram_begin{static_cast<const uint32_t*>(m_memory.map(m_core, AxMemory::WRAM_BEGIN))}
-{
-}
-
-void AltairX::load_kernel(const std::filesystem::path& path)
-{
-    std::ifstream file{path, std::ios::binary};
-    if(!file.is_open())
-    {
-        std::cerr << "Error : Impossible open kernel" << std::endl;
-        return;
-    }
-
-    file.seekg(0, std::ios::end);
-    std::streampos filesize = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    void* rom = m_memory.map(m_core, AxMemory::ROM_BEGIN);
-    file.read(reinterpret_cast<char*>(rom), filesize);
-}
+#include <core.hpp>
+#include <memory.hpp>
 
 namespace
 {
-
-#ifdef HAS_LLVM
 
 const AxELFSymbol& get_entry_point(const AxELFFile& elf, std::string_view entry_point_name)
 {
@@ -107,41 +76,6 @@ std::vector<AxSectionBounds> load_sections(const AxELFFile& elf, const AxELFSymb
     return output;
 }
 
-#endif //  HAS_LLVM
-
-}
-
-void AltairX::load_program(const std::filesystem::path& path, std::string_view entry_point_name)
-{
-#ifdef HAS_LLVM
-    if(auto elf{AxELFFile::from_file(path)}; elf)
-    {
-        auto& entry_point = get_entry_point(*elf, entry_point_name);
-        load_sections(*elf, entry_point, m_memory, m_core);
-        return;
-    }
-#endif
-
-    // load raw executable file
-    std::ifstream file{path, std::ios::binary};
-    if(!file.is_open())
-    {
-        ax_panic("Error : Impossible open file \"", path.string(), "\"");
-    }
-
-    file.seekg(0, std::ios::end);
-    std::streampos filesize = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    void* wram = m_memory.map(m_core, AxMemory::WRAM_BEGIN);
-    file.read(reinterpret_cast<char*>(wram), filesize);
-    m_core.registers().pc = 4;
-}
-
-namespace
-{
-
-#ifdef HAS_LLVM
 uint64_t setup_stack(AxMemory& memory, AxCore& core, const std::vector<AxSectionBounds>& bounds)
 {
     AxSectionBounds total_bounds{std::numeric_limits<uint64_t>::max(), 0};
@@ -211,13 +145,13 @@ void write_entry_code(AxMemory& memory, AxCore& core, uint64_t main_addr, uint64
     const std::array<std::uint32_t, 8> entry_code =
         {
             1u | AX_EXE_BRU_CALL << 1 | ((main_pc & 0x00FFFFFFu) << 8), // call @main; init LR too to come back here after main returns!
-            0u | (((main_pc >> 24) & 0x00FFFFFFu) << 8), // moveix @main
-            0x08100620u,                                     // add.d r2, r1, 0; exit code, returned by main
-            0x07000302u,                                     // movei r1, 3; exit syscall
-            1u | AX_EXE_ALU_MOVEIX << 1,                                     // nop
-            0u | AX_EXE_CU_SYSCALL << 1,                                     // syscall
-            0x00000000u,                                     // nop
-            0x00000000u,                                     // nop
+            0u | (((main_pc >> 24) & 0x00FFFFFFu) << 8),                // moveix @main
+            0x08100620u,                                                // add.d r2, r1, 0; exit code, returned by main
+            0u | AX_EXE_ALU_MOVEI << 1 | 3u << 8 | 1u << 26,            // movei r1, 3; exit syscall
+            1u | AX_EXE_ALU_MOVEIX << 1,                                // nop
+            0u | AX_EXE_CU_SYSCALL << 1,                                // syscall
+            0x00000000u,                                                // nop
+            0x00000000u,                                                // nop
         };
 
     const auto required_space = entry_addr + entry_code.size() * 4;
@@ -232,83 +166,37 @@ void write_entry_code(AxMemory& memory, AxCore& core, uint64_t main_addr, uint64
     core.registers().pc = entry_addr / 4ull;
 }
 
-#endif
-
 }
 
-void AltairX::load_hosted_program(const std::filesystem::path& path, const std::vector<std::string_view>& argv)
+bool ax_load_elf_program(AxCore& core, const std::filesystem::path& path, std::string_view entry_point_name)
 {
-#ifndef HAS_LLVM
-    ax_panic("Host emulation requires a build with LLVM enabled!");
-#else
+    if(auto elf{AxELFFile::from_file(path)}; elf)
+    {
+        auto& entry_point = get_entry_point(*elf, entry_point_name);
+        load_sections(*elf, entry_point, core.memory(), core);
+        return true;
+    }
+
+    return false;
+}
+
+bool ax_load_elf_hosted_program(AxCore& core, const std::filesystem::path& path, const std::vector<std::string_view>& argv)
+{
     auto elf{AxELFFile::from_file(path)};
     if(!elf)
     {
-        ax_panic("Could not read ELF file \"", path.string(), "\"");
+        return false;
     }
 
     // look for main
     const auto& entry_point = get_entry_point(*elf, "main");
-    const auto sections_bounds = load_sections(*elf, entry_point, m_memory, m_core);
+    const auto sections_bounds = load_sections(*elf, entry_point, core.memory(), core);
 
     // setup stack since we need it to store argv and also to position entry code right after
-    const auto stack_end = setup_stack(m_memory, m_core, sections_bounds);
+    const auto stack_end = setup_stack(core.memory(), core, sections_bounds);
 
-    write_entry_code(m_memory, m_core, entry_point.value, stack_end);
-    load_host_argv(m_memory, m_core, path.filename().string(), argv);
-#endif
-}
+    write_entry_code(core.memory(), core, entry_point.value, stack_end);
+    load_host_argv(core.memory(), core, path.filename().string(), argv);
 
-int AltairX::run(AxExecutionMode mode)
-{
-    using clock = std::chrono::steady_clock;
-    using seconds = std::chrono::duration<double>;
-
-    static constexpr std::size_t threshold = 512 * 1024;
-
-    auto tp1 = clock::now();
-    std::size_t counter = 0;
-    std::size_t cycles = 0;
-    while(m_core.error() == 0)
-    {
-        execute();
-        m_core.syscall_emul();
-
-        // if(mode == AxExecutionMode::DEBUG)
-        //     altairx_debug(m_opcodes[0], 0);
-        // if(core->cycle > 20) exit(0);
-
-        counter += 1;
-        cycles += 1;
-        if(counter > threshold) // only check each few cycles...
-        {
-            const auto tp2 = clock::now();
-            const auto delta = std::chrono::duration_cast<seconds>(tp2 - tp1).count();
-            if(delta > 1.0) // ...and display if more than one second elapsed...
-            {
-                double frequency = static_cast<double>(cycles) / delta;
-                std::cout << "Frequence : " << frequency / 1'000'000.0 << "MHz\n"; // no flush
-
-                tp1 = clock::now();
-                cycles = 0;
-            }
-
-            counter = 0;
-        }
-    }
-
-    return m_core.error();
-}
-
-void AltairX::execute()
-{
-    auto& regs = m_core.registers();
-    const auto real_pc = regs.pc & 0x7FFFFFFF;
-    const auto opcode1 = m_wram_begin[real_pc];
-    const auto opcode2 = m_wram_begin[real_pc + 1u];
-    const auto count = m_core.execute(opcode1, opcode2);
-
-    regs.cc += 1;
-    regs.ic += count;
-    regs.pc += count;
+    return true;
 }

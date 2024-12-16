@@ -1,6 +1,6 @@
-#include <memory.hpp>
+#include "memory.hpp"
 
-#include <core.hpp>
+#include "core.hpp"
 
 AxMemory::AxMemory(size_t nwram, size_t nspmt, size_t nspm2)
 {

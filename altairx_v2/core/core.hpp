@@ -5,7 +5,7 @@
 #include <vector>
 #include <array>
 
-#include <opcode.hpp>
+#include "opcode.hpp"
 
 class AxMemory;
 
@@ -64,9 +64,24 @@ public:
     AxCore& operator=(AxCore&&) noexcept = delete;
 
     // Execute opcode1 and, if possible, opcode2. Returns the number of opcodes run (1 or 2)
+    // Used internally in cycle(), may be used in tests.
     uint32_t execute(AxOpcode first, AxOpcode second);
+    
+    // Emulate a whole cycle. Read next instructions from current PC and update it.
+    void cycle()
+    {
+        const auto real_pc = m_regs.pc & 0x7FFFFFFF;
+        const auto opcode1 = m_wram_begin[real_pc];
+        const auto opcode2 = m_wram_begin[real_pc + 1u];
+        const auto count = execute(opcode1, opcode2);
 
-    void syscall_emul()
+        m_regs.cc += 1;
+        m_regs.ic += count;
+        m_regs.pc += count;
+    }
+
+    // Emulate a syscalls if last executed included a syscall instruction.
+    void syscall()
     {
         if(m_syscall == 0)
         {
@@ -74,6 +89,16 @@ public:
         }
 
         execute_syscall();
+    }
+
+    AxMemory& memory() noexcept
+    {
+        return *m_memory;
+    }
+
+    const AxMemory& memory() const noexcept
+    {
+        return *m_memory;
     }
 
     RegisterSet& registers() noexcept
@@ -136,6 +161,7 @@ private:
     std::array<uint8_t, SPM_SIZE> m_spm{};
     RegisterSet m_regs;
     AxMemory* m_memory{};
+    const uint32_t* m_wram_begin{};
 
     int m_error = 0;
     uint32_t m_cycle = 0;

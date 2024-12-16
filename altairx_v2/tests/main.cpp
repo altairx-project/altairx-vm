@@ -54,7 +54,7 @@ TEMPLATE_TEST_CASE("Conditional jumps", "[brc]", int8_t, int16_t, int32_t, int64
         INFO("sizeof == " << typesize);
         INFO("left == " << left);
         INFO("right == " << right);
-        INFO("opcode: " << brc.to_string());
+        INFO("opcode: " << AxOpcode::to_string(brc, make_noop_opcode()).first);
         INFO("expected_result == " << expected_result);
 
         core.registers().gpi[1] = left;

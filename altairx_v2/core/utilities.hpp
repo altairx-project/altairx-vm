@@ -22,6 +22,17 @@ inline const std::array<uint64_t, 4> signmask =
   0x0000000000000000ull,
 };
 
+inline uint64_t sext_bitsize(uint64_t val, uint64_t bitsize) noexcept
+{
+    const auto mask = 1ull << (bitsize - 1ull);
+    return (val ^ mask) - mask;
+}
+
+inline uint64_t sext_bytesize(uint64_t val, uint64_t bytesize) noexcept
+{
+    return sext_bitsize(val, 8ull * bytesize);
+}
+
 inline uint16_t float_to_half(float fval)
 {
     uint32_t val;

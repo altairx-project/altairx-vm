@@ -1,4 +1,4 @@
-#include <core.hpp>
+#include "core.hpp"
 
 #include <cstdlib>
 #include <cmath>
@@ -6,29 +6,14 @@
 #include <vector>
 #include <iostream>
 
-#include <memory.hpp>
-#include <opcode.hpp>
-#include <panic.hpp>
-#include <utilities.hpp>
-
-namespace
-{
-
-uint64_t sext_bitsize(uint64_t val, uint64_t bitsize) noexcept
-{
-    const auto mask = 1ull << (bitsize - 1ull);
-    return (val ^ mask) - mask;
-}
-
-uint64_t sext_bytesize(uint64_t val, uint64_t bytesize) noexcept
-{
-    return sext_bitsize(val, 8ull * bytesize);
-}
-
-}
+#include "memory.hpp"
+#include "opcode.hpp"
+#include "panic.hpp"
+#include "utilities.hpp"
 
 AxCore::AxCore(AxMemory& memory)
-: m_memory{&memory}
+    : m_memory{&memory}
+    , m_wram_begin{static_cast<const uint32_t*>(m_memory->map(*this, AxMemory::WRAM_BEGIN))}
 {
 }
 
@@ -96,12 +81,11 @@ uint32_t AxCore::execute(AxOpcode first, AxOpcode second)
     const auto old_pc = m_regs.pc;
 
     const uint64_t imm24 = first.is_bundle() && second.is_moveix() ? second.moveix_imm24() : 0ull;
-    //std::cout << m_regs.pc * 4 << ": " << first.to_string() << std::endl;
     execute_unit(first, 0, imm24);
+
     // execute second instruction
     if(first.is_bundle() && !second.is_moveix()) // don't call execute unit for a nop
     {
-        //std::cout << (m_regs.pc + 1) * 4 << " (2): " << second.to_string() << std::endl;
         execute_unit(second, 1, imm24);
     }
 
@@ -197,7 +181,32 @@ void do_cmp(uint32_t& fr, T left, T right)
 
     // In C++ there will be integer promotion when doing the substraction
     // We cast to T once again to trunc the value, then make it unsigned again
+
+#if  defined(__clang__) || defined(__GNUC__)
+    T tmp2;
+    if(__builtin_sub_overflow(left, right, &tmp2))
+    {
+        fr |= AxCore::O_MASK;
+    }
+    else
+    {
+        fr &= 0xFFFFFFFFu - AxCore::O_MASK;
+    }
+
+    const auto tmp = uint(static_cast<T>(tmp2));
+#else
     const auto tmp = uint(static_cast<T>(uint(left) - uint(right)));
+    // O: Set if result in a value too large for the register to contain.
+    if((right > 0 && left < std::numeric_limits<T>::min() + right)
+        || (right < 0 && left > std::numeric_limits<T>::max() + right))
+    {
+        fr |= AxCore::O_MASK;
+    }
+    else
+    {
+        fr &= 0xFFFFFFFFu - AxCore::O_MASK;
+    }
+#endif //  defined(__clang__) || defined(__GNUC)
 
     // Z: Set if the result of an operation is 0
     if(tmp == 0)
@@ -227,17 +236,6 @@ void do_cmp(uint32_t& fr, T left, T right)
     else
     {
         fr &= 0xFFFFFFFFu - AxCore::N_MASK;
-    }
-
-    // O: Set if result in a value too large for the register to contain.
-    if((right > 0 && left < std::numeric_limits<T>::min() + right)
-        || (right < 0 && left > std::numeric_limits<T>::max() + right))
-    {
-        fr |= AxCore::O_MASK;
-    }
-    else
-    {
-        fr &= 0xFFFFFFFFu - AxCore::O_MASK;
     }
 }
 

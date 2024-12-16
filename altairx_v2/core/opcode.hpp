@@ -136,7 +136,7 @@ struct AxOpcode
         return value == 0;
     }
 
-    std::string to_string() const;
+    static std::pair<std::string, std::string> to_string(AxOpcode first, AxOpcode second);
 };
 
 enum BRCondCode : std::uint32_t {

@@ -17,7 +17,7 @@ template<typename... Args>
 }
 
 template<typename... Args>
-void ax_check(bool b, Args&&... args [[maybe_unused]])
+void ax_check(bool b, Args&&... args)
 {
     if(!b)
     {
