@@ -507,7 +507,7 @@ void AxCore::execute_lsu(AxOpcode op, uint64_t imm24)
     {
         const uint64_t tmp = sext_bitsize(op.lsu_imm10(), 10);
         const auto off = tmp ^ (imm24 << 9);
-        return uint(sint(m_regs.gpi[op.reg_b()]) + sint(off));
+        return ::uint(sint(m_regs.gpi[op.reg_b()]) + sint(off));
     };
 
     // Trunc value to op size (8, 16, 32 or 64 bits)

@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <filesystem>
+#include <vector>
 
 enum : uint64_t
 {

@@ -2,6 +2,7 @@
 #define AXMEMORY_HPP_INCLUDED
 
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 class AxCore;
