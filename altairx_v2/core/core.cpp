@@ -163,13 +163,13 @@ namespace
 {
 
 template<typename T>
-const auto sint(T value) noexcept
+const auto tosi(T value) noexcept
 {
     return static_cast<std::make_signed_t<T>>(value);
 }
 
 template<typename T>
-const auto uint(T value) noexcept
+const auto toui(T value) noexcept
 {
     return static_cast<std::make_unsigned_t<T>>(value);
 }
@@ -193,9 +193,9 @@ void do_cmp(uint32_t& fr, T left, T right)
         fr &= 0xFFFFFFFFu - AxCore::O_MASK;
     }
 
-    const auto tmp = uint(static_cast<T>(tmp2));
+    const auto tmp = toui(static_cast<T>(tmp2));
 #else
-    const auto tmp = uint(static_cast<T>(uint(left) - uint(right)));
+    const auto tmp = toui(static_cast<T>(toui(left) - toui(right)));
     // O: Set if result in a value too large for the register to contain.
     if((right > 0 && left < std::numeric_limits<T>::min() + right)
         || (right < 0 && left > std::numeric_limits<T>::max() + right))
@@ -219,7 +219,7 @@ void do_cmp(uint32_t& fr, T left, T right)
     }
 
     // C: Set if the last arithmetic operation a bit beyond the size of the register.
-    if(tmp > uint(left))
+    if(tmp > toui(left))
     {
         fr |= AxCore::C_MASK;
     }
@@ -229,7 +229,7 @@ void do_cmp(uint32_t& fr, T left, T right)
     }
 
     // N: Set if the result of an operation is negative.
-    if(sint(tmp) < 0)
+    if(tosi(tmp) < 0)
     {
         fr |= AxCore::N_MASK;
     }
@@ -374,7 +374,7 @@ void AxCore::execute_alu(AxOpcode op, uint64_t imm24)
         break;
 
     case AX_EXE_ALU_ASR:
-        writeback(trunc(sint(sext(trunc(left()))) >> sint(sext(trunc(right())))));
+        writeback(trunc(tosi(sext(trunc(left()))) >> tosi(sext(trunc(right())))));
         break;
 
     case AX_EXE_ALU_LSR:
@@ -462,15 +462,15 @@ void AxCore::execute_mdu(AxOpcode op, uint64_t imm24)
     switch(op.operation())
     {
     case AX_EXE_MDU_DIV:
-        m_regs.mdu[0] = trunc(sint(sext(trunc(left()))) / sint(trunc(sext(trunc(right())))));
-        m_regs.mdu[1] = trunc(sint(sext(trunc(left()))) % sint(trunc(sext(trunc(right())))));
+        m_regs.mdu[0] = trunc(tosi(sext(trunc(left()))) / tosi(trunc(sext(trunc(right())))));
+        m_regs.mdu[1] = trunc(tosi(sext(trunc(left()))) % tosi(trunc(sext(trunc(right())))));
         break;
     case AX_EXE_MDU_DIVU:
         m_regs.mdu[0] = trunc(trunc(left()) / sext(trunc(right())));
         m_regs.mdu[1] = trunc(trunc(left()) % sext(trunc(right())));
         break;
     case AX_EXE_MDU_MUL:
-        m_regs.mdu[2] = trunc(sint(sext(trunc(left()))) * sint(sext(trunc(right()))));
+        m_regs.mdu[2] = trunc(tosi(sext(trunc(left()))) * tosi(sext(trunc(right()))));
         break;
     case AX_EXE_MDU_MULU:
         m_regs.mdu[2] = trunc(trunc(left()) * sext(trunc(right())));
@@ -507,7 +507,7 @@ void AxCore::execute_lsu(AxOpcode op, uint64_t imm24)
     {
         const uint64_t tmp = sext_bitsize(op.lsu_imm10(), 10);
         const auto off = tmp ^ (imm24 << 9);
-        return ::uint(sint(m_regs.gpi[op.reg_b()]) + sint(off));
+        return toui(tosi(m_regs.gpi[op.reg_b()]) + tosi(off));
     };
 
     // Trunc value to op size (8, 16, 32 or 64 bits)
@@ -563,12 +563,12 @@ void AxCore::execute_bru(AxOpcode op, uint64_t imm24)
 {
     const auto relative23 = [op, imm24]() -> int64_t
     {
-        return sint(sext_bitsize(op.bru_imm23(), 23) ^ (imm24 << 22));
+        return tosi(sext_bitsize(op.bru_imm23(), 23) ^ (imm24 << 22));
     };
 
     const auto relative24 = [op, imm24]() -> int64_t
     {
-        return sint(sext_bitsize(op.bru_imm24(), 24) ^ (imm24 << 23));
+        return tosi(sext_bitsize(op.bru_imm24(), 24) ^ (imm24 << 23));
     };
 
     const auto absolute24 = [op, imm24]()
@@ -660,7 +660,7 @@ void AxCore::execute_bru(AxOpcode op, uint64_t imm24)
         break;
     case AX_EXE_BRU_INDIRECTCALLR:
         m_regs.gpi[op.reg_a()] = lr_value();
-        add_pc(sint(m_regs.gpi[op.reg_b()]));
+        add_pc(tosi(m_regs.gpi[op.reg_b()]));
         break;
     case AX_EXE_BRU_INDIRECTCALL:
         m_regs.gpi[op.reg_a()] = lr_value();
