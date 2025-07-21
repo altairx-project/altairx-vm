@@ -5,7 +5,7 @@ project(AltairXVM VERSION 1.0)
 option(BUILD_TESTING "If ON, build VM tests" OFF)
 option(AltairXVM_USE_LTO "If ON, try to enable LTO" ON)
 option(AltairXVM_ELF_SUPPORT "If ON, try to find LLVM to enable ELF support" ON)
-option(AltairXVM_BUILD_GUI "If ON, build AltairXVM debugger. Requires SDL2." ON)
+option(AltairXVM_BUILD_GUI "If ON, build AltairXVM debugger. Requires SDL3." ON)
 
 # Optional LTO support
 if(AltairXVM_USE_LTO)
@@ -20,7 +20,7 @@ endif()
 
 # Optional ELF support
 if(AltairXVM_ELF_SUPPORT)
-	find_package(LLVM COMPONENTS LLVMObject)
+	find_package(LLVM CONFIG COMPONENTS LLVMObject)
 	if(LLVM_FOUND)
 		message(STATUS "ELF support enabled, found LLVM ${LLVM_PACKAGE_VERSION} at ${LLVM_DIR}")
 		add_subdirectory(elf)
@@ -39,7 +39,12 @@ FetchContent_MakeAvailable(fmt)
 add_subdirectory(core)
 
 if(AltairXVM_BUILD_GUI)
-	add_subdirectory(gui)
+    find_package(SDL3 CONFIG COMPONENTS SDL3)
+    if(SDL3_FOUND)
+	    add_subdirectory(gui)
+    else()
+	    message(WARNING "GUI support disabled, could not found SDL3.")
+    endif()
 endif()
 
 add_subdirectory(vm)
