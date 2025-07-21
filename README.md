@@ -14,7 +14,7 @@ TBD!
   - A C++17 compatible compiler:
     - GCC ≥ 10 (recommended on Linux)
     - Clang ≥ 11
-    - Clang-CL (recommended on Windows)
+    - Clang-cl (recommended on Windows)
     - MSVC 2022
 
 #### Building
@@ -30,9 +30,12 @@ cmake --install altairx-vm-build --prefix altairx-vm-install  # optional
 
 #### Configuration options
 
-| Option name   | Description | Default |
-| ------------- | ----------- | ------- |
-| BUILD_TESTING | Build tests | OFF     |
+| Option name           | Description                                                            | Default |
+| --------------------- | ---------------------------------------------------------------------- | ------- |
+| BUILD_TESTING         | Build unit tests.                                                      | OFF     |
+| AltairXVM_USE_LTO     | Enable LTO if supported. This is recommended for release build.        | ON      |
+| AltairXVM_ELF_SUPPORT | Enable ELF loading. This feature requires "LLVM Object" library.       | ON      |
+| AltairXVM_BUILD_GUI   | Enable interactive GUI for the VM. This feature requires SDL3 library. | ON      |
 
 ## 🔗 Dependencies
 
@@ -42,13 +45,13 @@ Externally provided dependencies can be installed via package managers like vcpk
 Other dependencies are internally built depending on configuration options.
 
 The following dependencies are used optionally and detected automatically if available:
-| Library | Homepage                             | Externally provided |
-| ------- | ------------------------------------ | ------------------- |
-| LLVM    | https://llvm.org                     | Yes                 |
-| SDL3    | https://github.com/libsdl-org/SDL    | Yes                 |
-| ImGUI   | https://github.com/ocornut/imgui     | No                  |
-| GTest   | https://github.com/google/googletest | No                  |
-| libfmt  | https://github.com/fmtlib/fmt        | No                  |
+| Library | Homepage                               | Externally provided |
+| ------- | -------------------------------------- | ------------------- |
+| LLVM    | https://llvm.org                       | Yes                 |
+| SDL     | https://github.com/libsdl-org/SDL      | Yes                 |
+| ImGUI   | https://github.com/ocornut/imgui       | No                  |
+| Catch   | https://github.com/catchorg/Catch2.git | No                  |
+| libfmt  | https://github.com/fmtlib/fmt          | No                  |
 
 ## 📄 License
 
