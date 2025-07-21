@@ -203,7 +203,7 @@ int main(int argc, char* argv[])
     {
         std::cerr << e.what() << std::endl;
         print_usage();
-        return 0;
+        return 1;
     }
 
     try
