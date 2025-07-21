@@ -1,0 +1,54 @@
+name: AltairXVM checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Ubuntu
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            cmake \
+            build-essential \
+            ninja-build \
+            libsdl3-dev \
+            llvm-20-dev
+
+      - name: Configure build for amd64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - name: Build Debug
+        run: |
+          cmake -S . -B build-debug -DCMAKE_BUILD_TYPE:STRING=Debug
+          cmake --build build-debug
+
+      - name: Build Release
+        run: |
+          cmake -S . -B build-release -DCMAKE_BUILD_TYPE:STRING=Release
+          cmake --build build-release
+
+      #- name: Package
+      #  run: |
+      #    cmake --build build --target package
+
+      #- name: Upload artifact
+      #  uses: actions/upload-artifact@v4
+      #  with:
+      #    name: package-${{ matrix.os }}
+      #    path: build/*
