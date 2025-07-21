@@ -10,7 +10,7 @@ if(AltairXVM_ELF_SUPPORT AND LLVM_FOUND)
 	target_link_libraries(AltairXVM PRIVATE AltairXVMELF)
 endif()
 
-if(AltairXVM_BUILD_GUI)
+if(AltairXVM_BUILD_GUI AND SDL3_FOUND)
 	target_link_libraries(AltairXVM PRIVATE AltairXVMGUI)
 endif()
 

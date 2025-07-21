@@ -13,7 +13,10 @@
 #include "altairx.hpp"
 
 #include <panic.hpp>
-#include <altairx_gui.hpp>
+
+#ifdef AX_HAS_GUI
+    #include <altairx_gui.hpp>
+#endif
 
 namespace
 {
@@ -165,8 +168,13 @@ int run_vm(const AxParameters& parameters)
 {
     if(parameters.gui)
     {
+#ifdef AX_HAS_GUI
         AltairXGUI gui{};
         return gui.run();
+#else
+        print_usage();
+        ax_panic("AltairXVM has not been build with GUI support.");
+#endif
     }
 
     AltairX altairx{parameters.wram_size, parameters.spmt_size, parameters.spm2_size};
