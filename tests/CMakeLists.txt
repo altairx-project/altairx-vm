@@ -1,11 +1,10 @@
 # Get Catch2 in-source for simplicity
 Include(FetchContent)
 FetchContent_Declare(Catch2
-	GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-	GIT_TAG        v// Copyright (c) Kannagi, Alexy Pellegrini
-// MIT License, see LICENSE for details
-
-.7.1 # or a later release
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG        v3.7.1
+    SYSTEM
+    EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(Catch2)
 
