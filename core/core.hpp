@@ -1,3 +1,6 @@
+// Copyright (c) Kannagi, Alexy Pellegrini
+// MIT License, see LICENSE for details
+
 #ifndef AXCORE_HPP_INCLUDED
 #define AXCORE_HPP_INCLUDED
 

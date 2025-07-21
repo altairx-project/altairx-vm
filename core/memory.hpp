@@ -1,3 +1,6 @@
+// Copyright (c) Kannagi, Alexy Pellegrini
+// MIT License, see LICENSE for details
+
 #ifndef AXMEMORY_HPP_INCLUDED
 #define AXMEMORY_HPP_INCLUDED
 

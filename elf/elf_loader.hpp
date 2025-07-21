@@ -1,3 +1,6 @@
+// Copyright (c) Kannagi, Alexy Pellegrini
+// MIT License, see LICENSE for details
+
 #ifndef AXELFLOADER_HPP_INCLUDED
 #define AXELFLOADER_HPP_INCLUDED
 

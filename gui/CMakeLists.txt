@@ -1,6 +1,3 @@
-# Uses SDL3
-find_package(SDL3 REQUIRED CONFIG REQUIRED COMPONENTS SDL3)
-
 include(FetchContent)
 FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
@@ -24,7 +21,6 @@ target_include_directories(ImGUI PUBLIC
     ${imgui_SOURCE_DIR}/backends
 )
 target_link_libraries(ImGUI PRIVATE SDL3::SDL3)
-
 
 add_library(AltairXVMGUI STATIC
 	altairx_gui.hpp

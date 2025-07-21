@@ -1,3 +1,6 @@
+// Copyright (c) Kannagi, Alexy Pellegrini
+// MIT License, see LICENSE for details
+
 #include "altairx_gui.hpp"
 
 #include <array>

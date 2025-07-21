@@ -1,3 +1,6 @@
+// Copyright (c) Kannagi, Alexy Pellegrini
+// MIT License, see LICENSE for details
+
 #include <elf.hpp>
 #include <fstream>
 #include <iostream>

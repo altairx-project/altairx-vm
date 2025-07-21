@@ -1,3 +1,6 @@
+// Copyright (c) Kannagi, Alexy Pellegrini
+// MIT License, see LICENSE for details
+
 #ifndef AXMAKEOPCODE_HPP_INCLUDED
 #define AXMAKEOPCODE_HPP_INCLUDED
 

@@ -1,3 +1,6 @@
+// Copyright (c) Kannagi, Alexy Pellegrini
+// MIT License, see LICENSE for details
+
 #ifndef PANIC_HPP_INCLUDED
 #define PANIC_HPP_INCLUDED
 

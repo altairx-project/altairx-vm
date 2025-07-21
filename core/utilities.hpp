@@ -1,3 +1,6 @@
+// Copyright (c) Kannagi, Alexy Pellegrini
+// MIT License, see LICENSE for details
+
 #ifndef UTILITIES_HPP_INCLUDED
 #define UTILITIES_HPP_INCLUDED
 

@@ -1,3 +1,6 @@
+// Copyright (c) Kannagi, Alexy Pellegrini
+// MIT License, see LICENSE for details
+
 #ifndef ALTAIRX_HPP_INCLUDED
 #define ALTAIRX_HPP_INCLUDED
 

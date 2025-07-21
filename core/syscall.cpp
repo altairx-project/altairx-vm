@@ -1,3 +1,6 @@
+// Copyright (c) Kannagi, Alexy Pellegrini
+// MIT License, see LICENSE for details
+
 #include <cstdio>
 #include <cstdlib>
 #include <vector>

@@ -1,3 +1,6 @@
+// Copyright (c) Kannagi, Alexy Pellegrini
+// MIT License, see LICENSE for details
+
 #ifndef AXDEBUGGERGUI_HPP_INCLUDED
 #define AXDEBUGGERGUI_HPP_INCLUDED
 
