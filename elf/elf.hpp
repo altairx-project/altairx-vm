@@ -104,14 +104,14 @@ enum : uint32_t
 
 struct AxELFSymbol
 {
-    std::string name;    // actual name
-    uint64_t st_name;    // index into the object file's symbol string table
-    uint64_t value;      // gives the value of the associated symbol. may be an absolute value, an address...
-    uint64_t size;       // symbol size. a data object's size is the number of bytes contained in the object
-    uint32_t binding;    // symbol binding type, extracted from st_info*
-    uint32_t type;       // symbol type, extracted from st_info*
-    uint32_t visibility; // currently specifies a symbol's visibility
-    uint32_t shndx;      // holds the relevant section header table index.
+    std::string name;   // actual name
+    uint64_t st_name;   // index into the object file's symbol string table
+    uint64_t value;     // gives the value of the associated symbol. may be an absolute value, an address...
+    uint64_t size;      // symbol size. a data object's size is the number of bytes contained in the object
+    uint8_t binding;    // symbol binding type, extracted from st_info*
+    uint8_t type;       // symbol type, extracted from st_info*
+    uint8_t visibility; // currently specifies a symbol's visibility
+    uint16_t shndx;     // holds the relevant section header table index.
 };
 
 class AxELFFile

@@ -6,7 +6,7 @@ add_executable(AltairXVM
 
 target_link_libraries(AltairXVM PRIVATE AltairXVMCore)
 
-if(AltairXVM_ELF_SUPPORT AND LLVM_FOUND)
+if(AltairXVM_ELF_SUPPORT)
     target_link_libraries(AltairXVM PRIVATE AltairXVMELF)
 endif()
 

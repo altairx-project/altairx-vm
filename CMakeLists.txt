@@ -8,7 +8,7 @@ project(AltairXVM
 option(BUILD_TESTING "If ON, build VM tests" OFF)
 option(AltairXVM_USE_LTO "If ON, try to enable LTO" ON)
 option(AltairXVM_ELF_SUPPORT "If ON, try to find LLVM to enable ELF support" ON)
-option(AltairXVM_BUILD_GUI "If ON, build AltairXVM debugger. Requires SDL3." ON)
+option(AltairXVM_BUILD_GUI "If ON, build AltairXVM debugger. Requires SDL3." OFF)
 
 # Optional LTO support
 if(AltairXVM_USE_LTO)
@@ -23,14 +23,7 @@ endif()
 
 # Optional ELF support
 if(AltairXVM_ELF_SUPPORT)
-    find_package(LLVM CONFIG COMPONENTS LLVMObject)
-    if(LLVM_FOUND)
-        message(STATUS "ELF support enabled, found LLVM ${LLVM_PACKAGE_VERSION} at ${LLVM_DIR}")
-        add_subdirectory(elf)
-    else()
-        message(WARNING "ELF loading disabled, could not found LLVM.")
-        message(AUTHOR_WARNING "Please install LLVM and tell CMake where to find it!")
-    endif()
+     add_subdirectory(elf)
 endif()
 
 include(FetchContent)
@@ -45,13 +38,8 @@ FetchContent_MakeAvailable(fmt)
 add_subdirectory(core)
 
 if(AltairXVM_BUILD_GUI)
-    find_package(SDL3 CONFIG)
-    if(SDL3_FOUND)
-        add_subdirectory(gui)
-    else()
-        message(WARNING "GUI support disabled, could not found SDL3.")
-        message(AUTHOR_WARNING "Please install SDL3 and tell CMake where to find it!")
-    endif()
+    find_package(SDL3 CONFIG REQUIRED)
+    add_subdirectory(gui)
 endif()
 
 add_subdirectory(vm)
