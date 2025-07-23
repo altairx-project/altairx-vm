@@ -5,6 +5,7 @@ FetchContent_Declare(Catch2
     GIT_TAG        v3.7.1
     SYSTEM
     EXCLUDE_FROM_ALL
+    FIND_PACKAGE_ARGS NAMES Catch2
 )
 FetchContent_MakeAvailable(Catch2)
 
