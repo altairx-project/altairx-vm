@@ -75,7 +75,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -Werror=dev -DBUILD_TESTING:BOOL=ON ${{ env.COMMON_CMAKE_OPTIONS }}
+          cmake -S . -B build -Werror=dev -DAltairXVM_BUILD_GUI:BOOL=ON -DBUILD_TESTING:BOOL=ON ${{ env.COMMON_CMAKE_OPTIONS }}
           cmake --build build
 
       - name: Test
