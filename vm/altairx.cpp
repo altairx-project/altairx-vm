@@ -8,7 +8,7 @@
 #include <fstream>
 #include <vector>
 
-#ifdef AX_HAS_LLVM
+#ifdef AX_HAS_ELF
     #include <elf_loader.hpp>
 #endif
 
@@ -40,7 +40,7 @@ void AltairX::load_kernel(const std::filesystem::path& path)
 
 void AltairX::load_program(const std::filesystem::path& path, std::string_view entry_point_name)
 {
-#ifdef AX_HAS_LLVM
+#ifdef AX_HAS_ELF
     if(ax_load_elf_program(m_core, path, entry_point_name))
     {
         return;
@@ -65,13 +65,13 @@ void AltairX::load_program(const std::filesystem::path& path, std::string_view e
 
 void AltairX::load_hosted_program(const std::filesystem::path& path, const std::vector<std::string_view>& argv)
 {
-#ifdef AX_HAS_LLVM
+#ifdef AX_HAS_ELF
     if(!ax_load_elf_hosted_program(m_core, path, argv))
     {
         ax_panic("Could not read ELF file \"", path.string(), "\"");
     }
 #else
-    ax_panic("Host emulation requires a build with LLVM enabled!");
+    ax_panic("Host emulation requires a build with ELF enabled!");
 #endif
 }
 

@@ -2,80 +2,50 @@
 // MIT License, see LICENSE for details
 
 #include <elf.hpp>
+
 #include <fstream>
 #include <iostream>
 
-#include <llvm/Object/ELF.h>
-#include <llvm/Object/ELFTypes.h>
-
-using ELFFileType = llvm::object::ELFFile<llvm::object::ELF64LE>;
+#include <elfio/elfio.hpp>
 
 namespace
 {
 
-std::optional<std::vector<AxELFSymbol>> convert_symbols(const ELFFileType& elf, const ELFFileType::Elf_Shdr& section)
+std::optional<std::vector<AxELFSymbol>> convert_symbols(const ELFIO::elfio& elf, ELFIO::section& section)
 {
-    auto symtab = elf.getStringTableForSymtab(section);
-    if(auto error{symtab.takeError()}; error)
-    {
-        std::cerr << "Error: Failed to get ELF symtab section string table:\n"
-                  << "  " << llvm::toString(std::move(error)).c_str() << std::endl;
-        return std::nullopt;
-    }
+    const ELFIO::symbol_section_accessor symbols{elf, &section};
 
-    auto symbols = elf.symbols(&section);
-    if(auto error{symbols.takeError()}; error)
-    {
-        std::cerr << "Error: Failed to get ELF symbol:\n"
-                  << "  " << llvm::toString(std::move(error)).c_str() << std::endl;
-        return std::nullopt;
-    }
+    std::vector<AxELFSymbol> output{};
+    output.reserve(symbols.get_symbols_num());
 
-    std::vector<AxELFSymbol> output;
-    output.reserve(symbols->size());
-
-    for(auto&& symbol : *symbols)
+    for(uint64_t i = 0; i < symbols.get_symbols_num(); ++i)
     {
-        auto name = symbol.getName(*symtab);
-        if(auto error{name.takeError()}; error)
+        auto& current = output.emplace_back();
+        if(symbols.get_symbol(i, current.name, current.value, current.size, current.binding, current.type,
+               current.shndx, current.visibility))
         {
-            std::cerr << "Warning: Failed to get ELF symbol name:\n"
-                      << "  " << llvm::toString(std::move(error)).c_str() << std::endl;
+            std::cerr << "Warning: Failed to get ELF symbol name" << std::endl;
+            return std::nullopt;
         }
 
-        auto& current = output.emplace_back();
-        current.name = name->str();
-        current.st_name = symbol.st_name;
-        current.value = symbol.st_value;
-        current.size = symbol.st_size;
-        current.binding = symbol.getBinding();
-        current.type = symbol.getType();
-        current.visibility = symbol.st_other & 0x03u;
-        current.shndx = symbol.st_shndx;
+        current.visibility &= 0x03;
     }
 
     return output;
 }
 
-std::optional<AxELFFile> convert_elf(const ELFFileType& elf)
+std::optional<AxELFFile> convert_elf(const ELFIO::elfio& elf)
 {
-    // auto&& header = elf.getHeader();
-    auto sections = elf.sections();
-    if(auto error = sections.takeError(); error)
-    {
-        std::cout << "Error: Failed to parse ELF sections:\n"
-                  << "  " << llvm::toString(std::move(error)).c_str() << std::endl;
-        return std::nullopt;
-    }
+    // auto&& header = elf.header;
 
     AxELFFile output;
-    output.sections.reserve(sections->size());
+    output.sections.reserve(elf.sections.size());
 
-    for(auto&& section : *sections)
+    for(auto&& section : elf.sections)
     {
-        if(section.sh_type == AX_SHT_SYMTAB) // preprocess symbol table for later uses!
+        if(section->get_type() == AX_SHT_SYMTAB) // preprocess symbol table for later uses!
         {
-            auto symbols = convert_symbols(elf, section);
+            auto symbols = convert_symbols(elf, *section);
             if(symbols)
             {
                 output.symbols = *std::move(symbols);
@@ -84,28 +54,28 @@ std::optional<AxELFFile> convert_elf(const ELFFileType& elf)
 
         // store raw section info
         auto& current = output.sections.emplace_back();
-        current.type = section.sh_type;
-        current.flags = section.sh_flags;
-        current.addr = section.sh_addr;
-        current.offset = section.sh_offset;
-        current.size = section.sh_size;
-        current.link = section.sh_link;
-        current.info = section.sh_info;
-        current.addralign = section.sh_addralign;
-        current.entsize = section.sh_size;
+        current.type = section->get_type();
+        current.flags = section->get_flags();
+        current.addr = section->get_address();
+        current.offset = section->get_offset();
+        current.size = section->get_size();
+        current.link = section->get_link();
+        current.info = section->get_info();
+        current.addralign = section->get_addr_align();
+        current.entsize = section->get_entry_size();
 
         // get content of allocatable sections
-        if((section.sh_flags & AX_SHF_ALLOC) != 0)
+        if((current.flags & AX_SHF_ALLOC) != 0)
         {
-            auto content = elf.getSectionContents(section);
-            if(auto error{content.takeError()}; error)
+            const char* content = section->get_data();
+            if(!content)
             {
-                std::cerr << "Error: Failed to get ELF section content:\n"
-                    << "  " << llvm::toString(std::move(error)).c_str() << std::endl;
+                std::cerr << "Error: Failed to get ELF section content" << std::endl;
                 return std::nullopt;
             }
 
-            current.content = content->vec();
+            current.content.resize(current.size);
+            std::copy_n(content, current.size, current.content.data());
         }
     }
 
@@ -123,19 +93,18 @@ std::optional<AxELFFile> AxELFFile::from_file(const std::filesystem::path& path)
         return std::nullopt;
     }
 
-    file.seekg(0, std::ios::end);
-    std::streampos filesize = file.tellg();
-    file.seekg(0, std::ios::beg);
-    std::vector<char> data; // must outlive the llvm ELF instrance
-    data.resize(filesize);
-    file.read(data.data(), data.size());
-
-    auto elf = ELFFileType::create(llvm::StringRef{data.data(), data.size()});
-    if(auto error = elf.takeError(); error)
+    ELFIO::elfio elf{};
+    if(!elf.load(file))
     {
-        llvm::consumeError(std::move(error));
+        std::cerr << "Invalid parse ELF file \"" << path.generic_string() << "\"" << std::endl;
         return std::nullopt;
     }
 
-    return convert_elf(*elf);
+    if(elf.get_class() != ELFIO::ELFCLASS64 || elf.get_encoding() != ELFIO::ELFDATA2LSB)
+    {
+      std::cerr << "ELF file \"" << path.generic_string() << "\" is not a LE64 ELF" << std::endl;
+      return std::nullopt;
+    }
+
+    return convert_elf(elf);
 }

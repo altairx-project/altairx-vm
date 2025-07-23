@@ -6,49 +6,90 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  INSTALL_PREFIX: "${{ github.workspace }}/install"
+  COMMON_CMAKE_OPTIONS: "-GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_PREFIX_PATH:PATH=${{ github.workspace }}/install -DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=MultiThreadedDLL"
+  SDL_TAG: "release-3.2.18"
+  SDL_DIR: "${{ github.workspace }}/sdl-build"
+  CATCH2_TAG: "v3.7.1"
+  CATCH2_DIR: "${{ github.workspace }}/catch-build"
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-22.04, windows-latest]
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Ubuntu
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt update
           sudo apt install -y \
-            cmake \
-            build-essential \
-            ninja-build \
-            libsdl3-dev \
-            llvm-20-dev
+            cmake build-essential ninja-build \
+            pkg-config gnome-desktop-testing libasound2-dev libpulse-dev \
+            libaudio-dev libjack-dev libsndio-dev libx11-dev libxext-dev \
+            libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev \
+            libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev \
+            libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev
 
       - name: Configure build for amd64
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64
 
-      - name: Build Debug
+      - name: Cache SDL3
+        id: cache-sdl3
+        uses: actions/cache@v4
+        with:
+          key: ${{ runner.os }}-sdl3-${{ env.SDL_TAG }}
+          path: ${{ env.INSTALL_PREFIX }}/sdl3
+      
+      - name: Build and install SDL3
+        if: ${{ steps.cache-sdl3.outputs.cache-hit != 'true' }}
         run: |
-          cmake -S . -B build-debug -DCMAKE_BUILD_TYPE:STRING=Debug
-          cmake --build build-debug
+          git clone --branch ${{ env.SDL_TAG }} --depth 1 https://github.com/libsdl-org/SDL.git sdl-src
+          cmake -S sdl-src -B "${{ env.SDL_DIR }}" ${{ env.COMMON_CMAKE_OPTIONS }}
+          cmake --build "${{ env.SDL_DIR }}"
+          cmake --install "${{ env.SDL_DIR }}" --prefix "${{ env.INSTALL_PREFIX }}/sdl3"
 
-      - name: Build Release
+      - name: Cache Catch2
+        id: cache-catch2
+        uses: actions/cache@v4
+        with:
+          key: ${{ runner.os }}-catch2-${{ env.CATCH2_TAG }}
+          path: ${{ env.INSTALL_PREFIX }}/catch2
+
+      - name: Build and install Catch2
+        if: ${{ steps.cache-catch2.outputs.cache-hit != 'true' }}
         run: |
-          cmake -S . -B build-release -DCMAKE_BUILD_TYPE:STRING=Release
-          cmake --build build-release
+          git clone --branch ${{ env.CATCH2_TAG }} --depth 1 https://github.com/catchorg/Catch2.git catch2-src
+          cmake -S catch2-src -B "${{ env.CATCH2_DIR }}" ${{ env.COMMON_CMAKE_OPTIONS }}
+          cmake --build "${{ env.CATCH2_DIR }}"
+          cmake --install "${{ env.CATCH2_DIR }}" --prefix "${{ env.INSTALL_PREFIX }}/catch2"
 
-      #- name: Package
-      #  run: |
-      #    cmake --build build --target package
+      - name: Build
+        run: |
+          cmake -S . -B build -Werror=dev -DAltairXVM_BUILD_GUI:BOOL=ON -DBUILD_TESTING:BOOL=ON ${{ env.COMMON_CMAKE_OPTIONS }}
+          cmake --build build
 
-      #- name: Upload artifact
-      #  uses: actions/upload-artifact@v4
-      #  with:
-      #    name: package-${{ matrix.os }}
-      #    path: build/*
+      - name: Test
+        run: |
+          cd build
+          ctest
+          cd ..
+
+      - name: Package
+        run: |
+          cmake --build build --target package
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.os }}
+          path: build/AltairXVM-*

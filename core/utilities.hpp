@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include <array>
+#include <cmath>
 #include <cstring>
 
 inline const std::array<uint64_t, 4> sizemask =

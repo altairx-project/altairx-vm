@@ -34,8 +34,8 @@ cmake --install altairx-vm-build --prefix altairx-vm-install  # optional
 | --------------------- | ---------------------------------------------------------------------- | ------- |
 | BUILD_TESTING         | Build unit tests.                                                      | OFF     |
 | AltairXVM_USE_LTO     | Enable LTO if supported. This is recommended for release build.        | ON      |
-| AltairXVM_ELF_SUPPORT | Enable ELF loading. This feature requires "LLVM Object" library.       | ON      |
-| AltairXVM_BUILD_GUI   | Enable interactive GUI for the VM. This feature requires SDL3 library. | ON      |
+| AltairXVM_ELF_SUPPORT | Enable ELF loading.                                                    | ON      |
+| AltairXVM_BUILD_GUI   | Enable interactive GUI for the VM. This feature requires SDL3 library. | OFF     |
 
 ## 🔗 Dependencies
 
@@ -47,8 +47,8 @@ Other dependencies are internally built depending on configuration options.
 The following dependencies are used optionally and detected automatically if available:
 | Library | Homepage                               | Externally provided |
 | ------- | -------------------------------------- | ------------------- |
-| LLVM    | https://llvm.org                       | Yes                 |
 | SDL     | https://github.com/libsdl-org/SDL      | Yes                 |
+| ELFIO   | https://github.com/serge1/ELFIO.git    | No                  |
 | ImGUI   | https://github.com/ocornut/imgui       | No                  |
 | Catch   | https://github.com/catchorg/Catch2.git | No                  |
 | libfmt  | https://github.com/fmtlib/fmt          | No                  |

@@ -15,5 +15,5 @@ target_compile_features(AltairXVMCore PUBLIC cxx_std_17)
 target_link_libraries(AltairXVMCore PRIVATE fmt::fmt)
 
 if(AX_HAS_LTO)
-	set_target_properties(AltairXVMCore PROPERTIES INTERPROCEDURAL_OPTIMIZATION ON)
+    set_target_properties(AltairXVMCore PROPERTIES INTERPROCEDURAL_OPTIMIZATION ON)
 endif()
