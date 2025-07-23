@@ -11,7 +11,6 @@ env:
   COMMON_CMAKE_OPTIONS: "-GNinja -DCMAKE_PREFIX_PATH:PATH=${{ github.workspace }}/install"
   SDL_TAG: "release-3.2.18"
   SDL_DIR: "${{ github.workspace }}/sdl-build"
-  LLVM_VERSION: "20.1.0"
 
 jobs:
   build:
@@ -30,7 +29,6 @@ jobs:
           sudo apt update
           sudo apt install -y \
             cmake build-essential ninja-build \
-            llvm-18-dev \
             pkg-config gnome-desktop-testing libasound2-dev libpulse-dev \
             libaudio-dev libjack-dev libsndio-dev libx11-dev libxext-dev \
             libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
@@ -42,20 +40,6 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64
-
-      - name: Cache LLVM on Windows
-        if: matrix.os == 'windows-latest'
-        id: cache-windows-llvm
-        uses: actions/cache@v4
-        with:
-          key: ${{ runner.os }}-llvm-${{ env.LLVM_VERSION }}
-          path: ${{ env.INSTALL_PREFIX }}/llvm
-
-      - name: Install LLVM for Windows
-        if: ${{ matrix.os == 'windows-latest' && steps.cache-windows-llvm.outputs.cache-hit != 'true' }}
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.LLVM_VERSION }}/clang+llvm-${{ env.LLVM_VERSION }}-x86_64-pc-windows-msvc.tar.xz" -OutFile "llvm.tar.xz"
-          tar -xf "llvm.tar.xz" -C "${{ env.INSTALL_PREFIX }}/llvm"
 
       - name: Cache SDL3
         id: cache-sdl3
