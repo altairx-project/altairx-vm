@@ -8,9 +8,11 @@ on:
 
 env:
   INSTALL_PREFIX: "${{ github.workspace }}/install"
-  COMMON_CMAKE_OPTIONS: "-GNinja -DCMAKE_PREFIX_PATH:PATH=${{ github.workspace }}/install"
+  COMMON_CMAKE_OPTIONS: "-GNinja -DCMAKE_PREFIX_PATH:PATH=${{ github.workspace }}/install -DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=MultiThreadedDLL"
   SDL_TAG: "release-3.2.18"
   SDL_DIR: "${{ github.workspace }}/sdl-build"
+  CATCH2_TAG: "v3.7.1"
+  CATCH2_DIR: "${{ github.workspace }}/catch-build"
 
 jobs:
   build:
@@ -48,7 +50,7 @@ jobs:
           key: ${{ runner.os }}-sdl3-${{ env.SDL_TAG }}
           path: ${{ env.INSTALL_PREFIX }}/sdl3
       
-      - name: Build SDL3
+      - name: Build and install SDL3
         if: ${{ steps.cache-sdl3.outputs.cache-hit != 'true' }}
         run: |
           git clone --branch ${{ env.SDL_TAG }} --depth 1 https://github.com/libsdl-org/SDL.git sdl-src
@@ -56,7 +58,20 @@ jobs:
           cmake --build "${{ env.SDL_DIR }}"
           cmake --install "${{ env.SDL_DIR }}" --prefix "${{ env.INSTALL_PREFIX }}/sdl3"
 
+      - name: Cache Catch2
+        id: cache-catch2
+        uses: actions/cache@v4
+        with:
+          key: ${{ runner.os }}-catch2-${{ env.CATCH2_TAG }}
+          path: ${{ env.INSTALL_PREFIX }}/catch2
+
+      - name: Build and install Catch2
+        if: ${{ steps.cache-catch2.outputs.cache-hit != 'true' }}
         run: |
+          git clone --branch ${{ env.CATCH2_TAG }} --depth 1 https://github.com/catchorg/Catch2.git catch2-src
+          cmake -S catch2-src -B "${{ env.CATCH2_DIR }}" -DCMAKE_BUILD_TYPE:STRING=Release ${{ env.COMMON_CMAKE_OPTIONS }}
+          cmake --build "${{ env.CATCH2_DIR }}"
+          cmake --install "${{ env.CATCH2_DIR }}" --prefix "${{ env.INSTALL_PREFIX }}/catch2"
 
       - name: Build
         run: |
