@@ -56,8 +56,11 @@ std::vector<AxSectionBounds> load_sections(const AxELFFile& elf, const AxELFSymb
                 ax_panic("Not enough memory to load program.");
             }
 
-            auto* wram = reinterpret_cast<char*>(memory.map(core, AxMemory::WRAM_BEGIN + section.addr));
-            std::memcpy(wram, section.content.data(), section.content.size());
+            if(section.type != AX_SHT_NOBITS)
+            {
+                auto* wram = reinterpret_cast<char*>(memory.map(core, AxMemory::WRAM_BEGIN + section.addr));
+                std::memcpy(wram, section.content.data(), section.content.size());
+            }
 
             if(section.addr <= entry_point.value && section.addr + section.size >= entry_point.value + entry_point.size)
             {
@@ -79,7 +82,7 @@ std::vector<AxSectionBounds> load_sections(const AxELFFile& elf, const AxELFSymb
     return output;
 }
 
-uint64_t setup_stack(AxMemory& memory, AxCore& core, const std::vector<AxSectionBounds>& bounds)
+uint64_t setup_stack(AxMemory& memory, AxCore& core, std::span<const AxSectionBounds> bounds)
 {
     AxSectionBounds total_bounds{std::numeric_limits<uint64_t>::max(), 0};
     for(auto&& section : bounds)
@@ -104,7 +107,7 @@ uint64_t setup_stack(AxMemory& memory, AxCore& core, const std::vector<AxSection
     return aligned_end + stack_size;
 }
 
-void load_host_argv(AxMemory& memory, AxCore& core, std::string_view program_name, const std::vector<std::string_view>& argv)
+void load_host_argv(AxMemory& memory, AxCore& core, std::string_view program_name, std::span<const std::string_view> argv)
 {
     const auto ax_alloca = [&core](uint64_t size)
     {
@@ -150,7 +153,7 @@ void write_entry_code(AxMemory& memory, AxCore& core, uint64_t main_addr, uint64
             1u | AX_EXE_BRU_CALL << 1 | ((main_pc & 0x00FFFFFFu) << 8), // call @main; init LR too to come back here after main returns!
             0u | (((main_pc >> 24) & 0x00FFFFFFu) << 8),                // moveix @main
             0x08100620u,                                                // add.d r2, r1, 0; exit code, returned by main
-            0u | AX_EXE_ALU_MOVEI << 1 | 3u << 8 | 1u << 26,            // movei r1, 3; exit syscall
+            0u | AX_EXE_ALU_MOVEI << 1 | 1u << 8 | 1u << 26,            // movei r1, 1; exit syscall
             1u | AX_EXE_ALU_MOVEIX << 1,                                // nop
             0u | AX_EXE_CU_SYSCALL << 1,                                // syscall
             0x00000000u,                                                // nop
@@ -169,37 +172,72 @@ void write_entry_code(AxMemory& memory, AxCore& core, uint64_t main_addr, uint64
     core.registers().pc = entry_addr / 4ull;
 }
 
-}
-
-bool ax_load_elf_program(AxCore& core, const std::filesystem::path& path, std::string_view entry_point_name)
+void fill_symbol_table(AxCore& core, const AxELFFile& elf, uint64_t entry_addr)
 {
-    if(auto elf{AxELFFile::from_file(path)}; elf)
+    std::vector<AxCore::Symbol> symbol_table;
+    symbol_table.reserve(elf.symbols.size() + 2);
+    symbol_table.emplace_back(AxCore::Symbol{0, "_void"});
+    symbol_table.emplace_back(AxCore::Symbol{entry_addr, "_entry"});
+
+    for(const auto& symbol : elf.symbols)
     {
-        auto& entry_point = get_entry_point(*elf, entry_point_name);
-        load_sections(*elf, entry_point, core.memory(), core);
-        return true;
+        if(symbol.type == AX_STT_FUNC)
+        {
+            symbol_table.emplace_back(AxCore::Symbol{symbol.value, symbol.name});
+        }
     }
 
-    return false;
+    std::sort(std::begin(symbol_table), std::end(symbol_table), [](auto&& left, auto&& right)
+    {
+        return left.address < right.address;
+    });
+
+    core.set_symbols(std::move(symbol_table));
 }
 
-bool ax_load_elf_hosted_program(AxCore& core, const std::filesystem::path& path, const std::vector<std::string_view>& argv)
+void do_load_elf_program(AxCore& core, AxELFFile& elf, std::string_view entry_point_name)
 {
-    auto elf{AxELFFile::from_file(path)};
-    if(!elf)
-    {
-        return false;
-    }
+     auto& entry_point = get_entry_point(elf, entry_point_name);
+     load_sections(elf, entry_point, core.memory(), core);
+}
 
+void do_load_elf_hosted_program(AxCore& core, AxELFFile& elf, std::string_view program_name, std::span<const std::string_view> argv)
+{
     // look for main
-    const auto& entry_point = get_entry_point(*elf, "main");
-    const auto sections_bounds = load_sections(*elf, entry_point, core.memory(), core);
+    const auto& entry_point = get_entry_point(elf, "main");
+    const auto sections_bounds = load_sections(elf, entry_point, core.memory(), core);
 
     // setup stack since we need it to store argv and also to position entry code right after
     const auto stack_end = setup_stack(core.memory(), core, sections_bounds);
 
     write_entry_code(core.memory(), core, entry_point.value, stack_end);
-    load_host_argv(core.memory(), core, path.filename().string(), argv);
+    load_host_argv(core.memory(), core, program_name, argv);
 
-    return true;
+    fill_symbol_table(core, elf, stack_end);
+}
+
+}
+
+void ax_load_elf_program(AxCore& core, const std::filesystem::path& path, std::string_view entry_point_name)
+{
+    AxELFFile elf{path};
+    do_load_elf_program(core, elf, entry_point_name);
+}
+
+void ax_load_elf_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view entry_point_name)
+{
+    AxELFFile elf{buffer, buffer_size};
+    do_load_elf_program(core, elf, entry_point_name);
+}
+
+void ax_load_elf_hosted_program(AxCore& core, const std::filesystem::path& path, std::span<const std::string_view> argv)
+{
+    AxELFFile elf{path};
+    do_load_elf_hosted_program(core, elf, path.filename().string(), argv);
+}
+
+void ax_load_elf_hosted_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view program_name, std::span<const std::string_view> argv)
+{
+    AxELFFile elf{buffer, buffer_size};
+    do_load_elf_hosted_program(core, elf, program_name, argv);
 }

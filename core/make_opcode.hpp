@@ -26,7 +26,7 @@ inline AxOpcode make_simple_opcode(uint32_t op)
 {
     const AxOpcode output = 0u | (op << 1);
 
-    ax_check(output.operation() == AX_EXE_ALU_MOVEI, "Invalid op encoding");
+    ax_check(output.operation() != AX_EXE_ALU_MOVEI, "Invalid op encoding");
 
     return output;
 }

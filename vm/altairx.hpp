@@ -27,7 +27,7 @@ public:
 
     // load an ELF file
     // See ax_load_elf_hosted_program
-    void load_hosted_program(const std::filesystem::path& path, const std::vector<std::string_view>& argv);
+    void load_hosted_program(const std::filesystem::path& path, std::span<const std::string_view> argv);
 
     // tbd
     void load_kernel(const std::filesystem::path& path);

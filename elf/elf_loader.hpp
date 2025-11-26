@@ -6,14 +6,17 @@
 
 #include "elf.hpp"
 
+#include <span>
+
 class AxCore;
 
 // load an ELF file and put PC at specified entry point location
-// Returns false if the file is NOT an ELF. Note: this function panics for other errors!
-bool ax_load_elf_program(AxCore& core, const std::filesystem::path& path, std::string_view entry_point_name);
+// This function panics on error!
+void ax_load_elf_program(AxCore& core, const std::filesystem::path& path, std::string_view entry_point_name);
+void ax_load_elf_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view entry_point_name);
 
 // load an ELF file
-// Returns false if the file is NOT an ELF. Note: this function panics for other errors!
+// This function panics on error!
 // Entry point is always main, and main always receive the argc and argv arguments
 // r0 (=sp) is initialized at 0x801FFFF8 leaving 1Mio of stack size
 // Argv values are stack allocated and given in a0 and a1
@@ -29,10 +32,11 @@ bool ax_load_elf_program(AxCore& core, const std::filesystem::path& path, std::s
 //    moveix @main
 //    nop
 //    add.d r2, r1, 0 ; exit code, returned by main
-//    movei r1, 3 ; exit syscall
+//    movei r1, 1 ; exit syscall
 //    syscall
 //    nop
 // ```
-bool ax_load_elf_hosted_program(AxCore& core, const std::filesystem::path& path, const std::vector<std::string_view>& argv);
+void ax_load_elf_hosted_program(AxCore& core, const std::filesystem::path& path, std::span<const std::string_view> argv);
+void ax_load_elf_hosted_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view program_name, std::span<const std::string_view> argv);
 
 #endif

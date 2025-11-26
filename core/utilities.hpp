@@ -158,4 +158,9 @@ bool is_real(T value) noexcept
   return value_class == FP_ZERO || value_class == FP_NORMAL;
 }
 
+template<class... Ts>
+struct ax_overloads : Ts... { using Ts::operator()...; };
+template<class... Ts>
+ax_overloads(Ts...) -> ax_overloads<Ts...>;
+
 #endif

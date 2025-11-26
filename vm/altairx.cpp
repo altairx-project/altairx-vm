@@ -3,17 +3,75 @@
 
 #include "altairx.hpp"
 
+#include <cstdio>
+#include <cstdlib>
 #include <chrono>
 #include <iostream>
 #include <fstream>
 #include <vector>
 
+#include <core.hpp>
+#include <memory.hpp>
+#include <panic.hpp>
+#include <make_opcode.hpp>
+
 #ifdef AX_HAS_ELF
     #include <elf_loader.hpp>
 #endif
 
-#include <make_opcode.hpp>
-#include <panic.hpp>
+namespace
+{
+
+enum class SyscallId : uint64_t
+{
+    exit = 1,        // code
+    stdio_read = 2,  // fb, buf, size
+    stdio_write = 3, // fb, buf, size
+};
+
+std::FILE* id_to_file(uint64_t id)
+{
+    switch(id)
+    {
+    case 0:
+        return stdin;
+    case 1:
+        return stdout;
+    case 2:
+        return stderr;
+    default:
+        ax_panic("Invalid file handle.");
+    }
+}
+
+void execute_syscall(AxCore& core)
+{
+    uint64_t* const args = &core.registers().gpi[1];
+    const auto intrinsic_id = static_cast<SyscallId>(args[0]);
+    switch(intrinsic_id)
+    {
+    case SyscallId::exit:
+    {
+        std::exit(static_cast<int>(args[1]));
+    }
+    case SyscallId::stdio_read:
+    {
+        void* addr = core.memory().map(core, args[2]);
+        args[0] = std::fread(addr, 1, args[3], id_to_file(args[1]));
+        break;
+    }
+    case SyscallId::stdio_write:
+    {
+        const void* addr = core.memory().map(core, args[2]);
+        args[0] = std::fwrite(addr, 1, args[3], id_to_file(args[1]));
+        break;
+    }
+    default:
+        ax_panic("Unknown intrinsic #", static_cast<uint64_t>(intrinsic_id));
+    }
+}
+
+}
 
 AltairX::AltairX(size_t nwram, size_t nspmt, size_t nspm2)
     : m_memory{nwram, nspmt, nspm2}
@@ -41,9 +99,13 @@ void AltairX::load_kernel(const std::filesystem::path& path)
 void AltairX::load_program(const std::filesystem::path& path, std::string_view entry_point_name)
 {
 #ifdef AX_HAS_ELF
-    if(ax_load_elf_program(m_core, path, entry_point_name))
+    try
     {
-        return;
+        ax_load_elf_program(m_core, path, entry_point_name);
+    }
+    catch(...)
+    {
+        std::cout << "Program will be run as a raw executable." << std::endl;
     }
 #endif
 
@@ -63,13 +125,10 @@ void AltairX::load_program(const std::filesystem::path& path, std::string_view e
     m_core.registers().pc = 4;
 }
 
-void AltairX::load_hosted_program(const std::filesystem::path& path, const std::vector<std::string_view>& argv)
+void AltairX::load_hosted_program(const std::filesystem::path& path, std::span<const std::string_view> argv)
 {
 #ifdef AX_HAS_ELF
-    if(!ax_load_elf_hosted_program(m_core, path, argv))
-    {
-        ax_panic("Could not read ELF file \"", path.string(), "\"");
-    }
+    ax_load_elf_hosted_program(m_core, path, argv);
 #else
     ax_panic("Host emulation requires a build with ELF enabled!");
 #endif
@@ -88,7 +147,7 @@ int AltairX::run(AxExecutionMode mode)
     while(m_core.error() == 0)
     {
         m_core.cycle();
-        m_core.syscall();
+        m_core.syscall(execute_syscall, m_core);
 
         counter += 1;
         cycles += 1;

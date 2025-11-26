@@ -20,6 +20,56 @@ AxCore::AxCore(AxMemory& memory)
 {
 }
 
+void AxCore::add_breakpoint(uint64_t address, bool enabled)
+{
+    const auto it = std::lower_bound(m_breakpoints.begin(), m_breakpoints.end(), address, [](auto&& left, auto&& right)
+    {
+        return left.address < right;
+    });
+
+    // check if it already exists
+    if(it != m_breakpoints.end() && it->address == address)
+    {
+        it->enabled = enabled; // update enable status
+        return;
+    }
+
+    m_breakpoints.insert(it, Breakpoint{address, enabled});
+}
+
+void AxCore::set_breakpoint_enabled(uint64_t address, bool enabled)
+{
+    auto it = get_breakpoint(address);
+    if(it != m_breakpoints.end())
+    {
+        it->enabled = enabled;
+    }
+}
+
+void AxCore::remove_breakpoint(uint64_t address)
+{
+    auto it = get_breakpoint(address);
+    if(it != m_breakpoints.end())
+    {
+        m_breakpoints.erase(it);
+    }
+}
+
+std::vector<AxCore::Breakpoint>::iterator AxCore::get_breakpoint(uint64_t address)
+{
+    const auto it = std::lower_bound(m_breakpoints.begin(), m_breakpoints.end(), address, [](auto&& left, auto&& right)
+    {
+        return left.address < right;
+    });
+
+    if(it != m_breakpoints.end() && it->address == address)
+    {
+        return it;
+    }
+
+    return m_breakpoints.end();
+}
+
 void AxCore::do_store(uint64_t src, uint64_t addr, uint32_t size)
 {
     if(size == 0)
@@ -320,7 +370,7 @@ void AxCore::execute_alu(AxOpcode op, uint32_t slot, uint64_t imm24)
         break;
 
     case AX_EXE_ALU_MOVEI:
-        writeback(sext_bitsize(op.alu_move_imm(), 18) ^ (imm24 << 18));
+        writeback(sext_bitsize(op.alu_move_imm(), 18) ^ (imm24 << 17));
         break;
 
     case AX_EXE_ALU_EXT:
@@ -553,9 +603,9 @@ void AxCore::execute_lsu(AxOpcode op, uint32_t slot, uint64_t imm24)
 
     const auto fsize_to_isize = [op]() -> uint32_t
     {
-        // 0 -> float -> i32 -> 2
-        // 1 -> double -> i64 -> 3
-        return op.size() + 2;
+        // 1 -> float -> i32 -> 2
+        // 2 -> double -> i64 -> 3
+        return op.size() + 1;
     };
 
     // Trunc value to op size (8, 16, 32 or 64 bits)
@@ -626,7 +676,7 @@ void AxCore::execute_bru(AxOpcode op, uint64_t imm24)
 
     const auto lr_value = [this, op]()
     {
-        return static_cast<uint64_t>(m_regs.pc + 1 + static_cast<uint32_t>(op.is_bundle()));
+        return static_cast<uint64_t>(m_regs.pc + 1 + static_cast<uint32_t>(op.is_bundle())) * 4ull;
     };
 
     const auto add_pc = [this](int64_t value)
@@ -656,7 +706,7 @@ void AxCore::execute_bru(AxOpcode op, uint64_t imm24)
 
     const auto u_mask = [this]()
     {
-      return (m_regs.fr >> 4) & 1u;
+        return (m_regs.fr >> 4) & 1u;
     };
 
     switch(op.operation())
@@ -725,11 +775,11 @@ void AxCore::execute_bru(AxOpcode op, uint64_t imm24)
         break;
     case AX_EXE_BRU_INDIRECTCALLR:
         m_regs.gpi[op.reg_a()] = lr_value();
-        add_pc(tosi(m_regs.gpi[op.reg_b()]));
+        add_pc(tosi(m_regs.gpi[op.reg_b()]) / 4ll);
         break;
     case AX_EXE_BRU_INDIRECTCALL:
         m_regs.gpi[op.reg_a()] = lr_value();
-        m_regs.pc = static_cast<uint32_t>(m_regs.gpi[op.reg_b()]);
+        m_regs.pc = static_cast<uint32_t>(m_regs.gpi[op.reg_b()] / 4ull);
         break;
     default:
         ax_panic("Unknown BRU operation");
@@ -746,8 +796,8 @@ void do_fcmp(uint32_t& fr, T left, T right)
 
     if(!is_real(left) || !is_real(right))
     {
-      fr = AxCore::U_MASK;
-      return;
+        fr = AxCore::U_MASK;
+        return;
     }
 
     // Z: Set if equal
@@ -1155,11 +1205,11 @@ void AxCore::execute_cu(AxOpcode op, uint64_t imm24)
         ax_panic("AX_EXE_CU_SETFR not implemented");
     case AX_EXE_CU_MMU:
         ax_panic("AX_EXE_CU_MMU not implemented");
-    case AX_EXE_CU_SYNC:
-        ax_panic("AX_EXE_CU_SYNC not implemented");
+    case AX_EXE_CU_BRK:
+        ax_panic("Debug break");
     case AX_EXE_CU_SYSCALL:
-        m_regs.ir = ir_value();
-        m_regs.pc = 0x80000000u;
+        // Since we emulate syscalls by running native code, we don't modify the vm context in any way
+        // Just pretend syscalls take one cycle an keep everything clean and tidy.
         m_syscall = 1;
         break;
     case AX_EXE_CU_RETI:

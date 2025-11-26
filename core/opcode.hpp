@@ -144,16 +144,6 @@ struct AxOpcode
     static std::pair<std::string, std::string> to_string(AxOpcode first, AxOpcode second);
 };
 
-enum BRCondCode : std::uint32_t
-{
-    NE = 0b000,  // Not equal
-    EQ = 0b001,  // Equal
-    LT = 0b010,  // Less
-    GE = 0b011,  // Greater or equal
-    LTS = 0b100, // Less (signed)
-    GES = 0b101, // Greater or equal (signed)
-};
-
 //-------------------------------
 enum AxOpcodes : uint32_t
 {
@@ -300,10 +290,10 @@ enum AxOpcodes : uint32_t
     AX_EXE_BRU_BLT,
     AX_EXE_BRU_BGE,
 
-    AX_EXE_BRU_BLTU,
-    AX_EXE_BRU_BGEU,
     AX_EXE_BRU_BEQU,
     AX_EXE_BRU_BNEU,
+    AX_EXE_BRU_BLTU,
+    AX_EXE_BRU_BGEU,
 
     AX_EXE_BRU_BRA,
     AX_EXE_BRU_CALLR,
@@ -331,7 +321,7 @@ enum AxOpcodes : uint32_t
     AX_EXE_CU_EMPTY7,
     AX_EXE_CU_EMPTY8,
     AX_EXE_CU_EMPTY9,
-    AX_EXE_CU_SYNC,
+    AX_EXE_CU_BRK,
     AX_EXE_CU_SYSCALL,
     AX_EXE_CU_RETI,
 
