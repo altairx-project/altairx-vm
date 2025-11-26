@@ -18,7 +18,7 @@ enum : uint64_t
     AX_SHT_HASH = 0x05,          // Symbol hash table
     AX_SHT_DYNAMIC = 0x06,       // Dynamic linking information
     AX_SHT_NOTE = 0x07,          // Notes
-    AX_SHT_NOBITS = 0x08,        // Program space with no data(bss)
+    AX_SHT_NOBITS = 0x08,        // Program space with no data (bss)
     AX_SHT_REL = 0x09,           // Relocation entries, no addends
     AX_SHT_SHLIB = 0x0A,         // Reserved
     AX_SHT_DYNSYM = 0x0B,        // Dynamic linker symbol table
@@ -117,7 +117,8 @@ struct AxELFSymbol
 class AxELFFile
 {
 public:
-    static std::optional<AxELFFile> from_file(const std::filesystem::path& path);
+    AxELFFile(const std::filesystem::path& path);
+    AxELFFile(const void* buffer, size_t buffer_size);
 
     std::vector<AxELFSection> sections;
     std::vector<AxELFSymbol> symbols;

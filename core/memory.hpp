@@ -20,6 +20,9 @@ public:
     static constexpr uint64_t SPM2_BEGIN = 0x4000'0000ull;
     static constexpr uint64_t WRAM_BEGIN = 0x8000'0000ull;
 
+    static constexpr size_t IO_SIZE = 512ull * 1024ull;  // 512 Kio
+    static constexpr size_t ROM_SIZE = 16ull * 1024ull * 1024ull; // 16 Mio
+
     // nwram: wram size in Mio
     // nspmt: spm thread size in kio
     // nspm2: spm L2 size in kio

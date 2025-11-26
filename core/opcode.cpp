@@ -117,14 +117,21 @@ std::string format_as(SImm imm)
 struct UImm
 {
     uint64_t value{};
-    explicit UImm(uint64_t val) noexcept
+    bool hexa_decimal{};
+    explicit UImm(uint64_t val, bool hexa = false) noexcept
         : value{val}
+        , hexa_decimal{hexa}
     {
     }
 };
 
 std::string format_as(UImm imm)
 {
+    if(imm.hexa_decimal)
+    {
+      return fmt::format("{0:#x}", imm.value);
+    }
+
     return fmt::format("{}", imm.value);
 }
 
@@ -260,7 +267,7 @@ std::string alu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     case AX_EXE_ALU_MOVEIX: // no-op
         return issecond ? "moveix" : "nop";
     case AX_EXE_ALU_MOVEI:
-        return fmt::format("movei\t{}, {}", output(), static_cast<int64_t>(sext_bitsize(op.alu_move_imm(), 18) ^ (imm24 << 18)));
+        return fmt::format("movei\t{}, {}", output(), static_cast<int64_t>(sext_bitsize(op.alu_move_imm(), 18) ^ (imm24 << 17)));
     case AX_EXE_ALU_EXT:
         return fmt::format("ext\t{}, {}, {}, {}", output(), left(), op.ext_ins_imm1(), op.ext_ins_imm2());
     case AX_EXE_ALU_INS:
@@ -412,21 +419,21 @@ std::string lsu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     case AX_EXE_LSU_LDS:
         return fmt::format("lds{}\t{}, {}[{}]", size(), output(), left(), right(false));
     case AX_EXE_LSU_FLD:
-        ax_panic("AX_EXE_LSU_FLD not implemented");
+        return fmt::format("fld{}\t{}, {}[{}]", size(), output(), left(), right(false));
     case AX_EXE_LSU_ST:
         return fmt::format("st{}\t{}, {}[{}]", size(), output(), left(), right(false));
     case AX_EXE_LSU_FST:
-        ax_panic("AX_EXE_LSU_FST not implemented");
+        return fmt::format("fst{}\t{}, {}[{}]", size(), output(), left(), right(false));
     case AX_EXE_LSU_LDI:
-        return fmt::format("lds{}\t{}, {}[{}]", size(), output(), right(true), left());
+        return fmt::format("ld{}\t{}, {}[{}]", size(), output(), right(true), left());
     case AX_EXE_LSU_LDIS:
         return fmt::format("lds{}\t{}, {}[{}]", size(), output(), right(true), left());
     case AX_EXE_LSU_FLDI:
-        ax_panic("AX_EXE_LSU_FLDI not implemented");
+        return fmt::format("fld{}\t{}, {}[{}]", size(), output(), right(true), left());
     case AX_EXE_LSU_STI:
         return fmt::format("st{}\t{}, {}[{}]", size(), output(), right(true), left());
     case AX_EXE_LSU_FSTI:
-        ax_panic("AX_EXE_LSU_FSTI not implemented");
+        return fmt::format("fst{}\t{}, {}[{}]", size(), output(), right(true), left());
     default:
         return {};
     }
@@ -512,7 +519,7 @@ std::string fpu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     case AX_EXE_FPU_FMOVE:
         return format_default("fmove", true);
     case AX_EXE_FPU_FCMP:
-        return fmt::format("fcmp{}\t{}, {}, {}", size(), left(), right());
+        return fmt::format("fcmp{}\t{}, {}", size(), left(), right());
     default:
         return {};
     }
@@ -600,7 +607,7 @@ std::string bru_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
 
     const auto absolute24 = [op, imm24]() -> UImm
     {
-        return UImm(op.bru_imm24() | (imm24 << 24));
+        return UImm(op.bru_imm24() | (imm24 << 24), true);
     };
 
     switch(op.operation())
@@ -613,6 +620,10 @@ std::string bru_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
         return fmt::format("blt\t{}", relative23());
     case AX_EXE_BRU_BGE:
         return fmt::format("bge\t{}", relative23());
+    case AX_EXE_BRU_BEQU:
+        return fmt::format("bequ\t{}", relative23());
+    case AX_EXE_BRU_BNEU:
+        return fmt::format("bneu\t{}", relative23());
     case AX_EXE_BRU_BLTU:
         return fmt::format("bltu\t{}", relative23());
     case AX_EXE_BRU_BGEU:
@@ -644,8 +655,8 @@ std::string cu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
         return "setfr";
     case AX_EXE_CU_MMU:
         return "mmu";
-    case AX_EXE_CU_SYNC:
-        return "sync";
+    case AX_EXE_CU_BRK:
+        return "brk";
     case AX_EXE_CU_SYSCALL:
         return "syscall";
     case AX_EXE_CU_RETI:
@@ -663,27 +674,27 @@ std::string opcode_to_string(AxOpcode opcode, uint32_t slot, uint64_t imm24)
     case 0:
         [[fallthrough]];
     case 1:
-        return alu_opcode_to_string(opcode, imm24, false);
+        [[fallthrough]];
     case 8:
         [[fallthrough]];
     case 9:
-        return alu_opcode_to_string(opcode, imm24, true);
+        return alu_opcode_to_string(opcode, imm24, slot);
     case 2:
-        return lsu_opcode_to_string(opcode, imm24, false);
+        [[fallthrough]];
     case 10:
-        return lsu_opcode_to_string(opcode, imm24, true);
+        return lsu_opcode_to_string(opcode, imm24, slot);
     case 3:
-        return fpu_opcode_to_string(opcode, imm24, false);
+        [[fallthrough]];
     case 11:
-        return fpu_opcode_to_string(opcode, imm24, true);
+        return fpu_opcode_to_string(opcode, imm24, slot);
     case 5:
-        return efu_opcode_to_string(opcode, imm24, false);
+        return efu_opcode_to_string(opcode, imm24, slot);
     case 6:
-        return mdu_opcode_to_string(opcode, imm24, false);
+        return mdu_opcode_to_string(opcode, imm24, slot);
     case 7:
-        return bru_opcode_to_string(opcode, imm24, false);
+        return bru_opcode_to_string(opcode, imm24, slot);
     case 13:
-        return cu_opcode_to_string(opcode, imm24, false);
+        return cu_opcode_to_string(opcode, imm24, slot);
     // case 14:
     //     execute_vu(opcode, imm24);
     //     break;

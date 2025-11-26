@@ -47,7 +47,7 @@ std::vector<std::string_view> get_args(int argc, char* argv[])
     return output;
 }
 
-std::int64_t get_value_for_arg(const std::vector<std::string_view>& args, std::size_t i, std::size_t size)
+std::int64_t get_value_for_arg(std::span<const std::string_view> args, std::size_t i, std::size_t size)
 {
     if(i + 1 >= size)
     {
