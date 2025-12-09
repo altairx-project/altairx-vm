@@ -24,19 +24,23 @@
   </property>
   <widget class="QWidget" name="content">
    <layout class="QVBoxLayout" name="verticalLayout">
+    <property name="spacing">
+     <number>0</number>
+    </property>
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
     <item>
-     <widget class="QLabel" name="label">
-      <property name="text">
-       <string>Status:</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QPushButton" name="pushButton">
-      <property name="text">
-       <string>PUSH PUSH</string>
-      </property>
-     </widget>
+     <widget class="DisassemblyView" name="disassemblyView" native="true"/>
     </item>
    </layout>
   </widget>
@@ -63,7 +67,6 @@
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
   </widget>
-  <widget class="QStatusBar" name="statusbar"/>
   <widget class="QDockWidget" name="registerViewDock">
    <property name="windowTitle">
     <string>Registers</string>
@@ -102,6 +105,15 @@
     <bool>false</bool>
    </attribute>
   </widget>
+  <widget class="QDockWidget" name="consoleDock">
+   <property name="windowTitle">
+    <string>Console</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>8</number>
+   </attribute>
+   <widget class="Console" name="console"/>
+  </widget>
   <action name="actionRegisters">
    <property name="text">
     <string>Registers</string>
@@ -123,6 +135,18 @@
    <class>RegistersView</class>
    <extends>QWidget</extends>
    <header>widgets/registersview.hpp</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>Console</class>
+   <extends>QWidget</extends>
+   <header>widgets/console.hpp</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>DisassemblyView</class>
+   <extends>QWidget</extends>
+   <header>widgets/disassemblyview.hpp</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

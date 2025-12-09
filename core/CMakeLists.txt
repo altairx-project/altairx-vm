@@ -4,6 +4,7 @@ add_library(AltairXVMCore STATIC
     io.cpp
     memory.cpp
     memory.hpp
+    message_stack.hpp
     opcode.cpp
     opcode.hpp
     panic.hpp

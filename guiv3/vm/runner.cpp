@@ -1,9 +1,8 @@
 #include "runner.hpp"
 
-#include <chrono>
 #include <exception>
 #include <memory>
-#include <thread>
+#include <variant>
 
 #include <QCoreApplication>
 #include <QFile>
@@ -12,7 +11,27 @@
 #include <core.hpp>
 #include <elf_loader.hpp>
 #include <memory.hpp>
-#include <panic.hpp>
+#include <message_stack.hpp>
+#include <utilities.hpp>
+
+namespace
+{
+
+struct AddBreakpoint
+{
+    uint64_t address{};
+    bool enabled{};
+    bool single_shot{};
+};
+
+struct RemoveBreakpoint
+{
+    uint64_t address{};
+};
+
+using AsyncCommand = std::variant<AddBreakpoint, RemoveBreakpoint>;
+
+}
 
 class VMRunner::Worker : public QObject
 {
@@ -24,7 +43,7 @@ public:
     {
     }
 
-    void loadRawProgram(const QString& path, std::uint64_t entry_point)
+    void loadRawProgram(const QString& path, uint64_t entry_point)
     {
         stop(true); // first stop the running program, if any
         cleanup();  // destroy current program, if any
@@ -47,7 +66,7 @@ public:
         std::memcpy(memory->map(*core, AxMemory::WRAM_BEGIN), content->data(), content->size());
         core->registers().pc = entry_point / 4ull;
 
-        ready(std::move(memory), std::move(core));
+        makeReady(std::move(memory), std::move(core));
     }
 
     void loadProgram(const QString& path, std::string_view entry_point_name)
@@ -72,7 +91,7 @@ public:
             return;
         }
 
-        ready(std::move(memory), std::move(core));
+        makeReady(std::move(memory), std::move(core));
     }
 
     void loadHostedProgram(const QString& path, const std::vector<std::string_view>& argv)
@@ -97,18 +116,23 @@ public:
             return;
         }
 
-        ready(std::move(memory), std::move(core));
+        makeReady(std::move(memory), std::move(core));
     }
 
     // Run a good amount of cycles at once, this enable more steady performances
-    static constexpr std::size_t cycleBundleSize = 8 * 1024;
+    static constexpr uint64_t cycleBundleSize = 1024;
 
-    // Core thread entry point
-    void start(bool paused)
+    // Core thread entry point, called as a slot by another thread
+    void start(uint64_t cycleCount)
     {
-        if(!compareExchangeStatus(Status::Ready, paused ? Status::Paused : Status::Running))
+        if(cycleCount == 0)
         {
-            return; // wasn't ready
+            return;
+        }
+
+        if(!compareExchangeStatus(Status::Paused, Status::Running))
+        {
+            return; // do not have a program or was stopped once for all
         }
 
         // This mutex indicates if this function is currently being run.
@@ -117,85 +141,109 @@ public:
 
         try
         {
-            uint16_t i = 0;
-            while(true)
+            // it will be impossible to reach uint64 maximum in practice
+            for(uint64_t i{}; i < cycleCount; ++i)
             {
-                coreError(i++);
-
-                switch(m_status.load(std::memory_order_acquire))
+                if(status() != Status::Running)
                 {
-                case VMRunner::Status::Stopped:
-                    return; // leave this thread
-                case VMRunner::Status::Paused:
-                    std::this_thread::sleep_for(std::chrono::milliseconds{1});
-                    continue; // try again later
-                case VMRunner::Status::Running:
-                    break;
-                default:
-                    ax_panic("VMRunner status unknown. Aborting.");
+                    return; // leaving this functions if another thread changed runner status
                 }
 
-                std::size_t cycle = 0;
-                while(m_core->error() == 0 && cycle < cycleBundleSize)
+                processMessages();
+
+                const auto limit = std::min(cycleBundleSize, cycleCount - i);
+                for(uint64_t cycle{}; cycle < limit; ++cycle)
                 {
-                    if(auto* bp = m_core->hit_breakpoint(); bp && bp->enabled)
+                    if(i != 0 || cycle != 0) [[likely]] // we do not check them on the very first cycle after a request
                     {
-                        setStatus(Status::Paused);
-                        break;
+                        if(auto* bp = m_core->hit_breakpoint(); bp && bp->enabled) [[unlikely]]
+                        {
+                            if(bp->single_shot)
+                            {
+                                m_core->remove_breakpoint(bp);
+                            }
+
+                            setStatus(Status::Paused);
+                            return;
+                        }
                     }
 
                     m_core->cycle();
 
-                    // let connected slots handle syscalls
-                    if(m_core->syscall(&Worker::syscall, this)) [[unlikely]]
+                    if(m_core->error()) [[unlikely]]
                     {
-                        // stop this pass of execution if syscall changed the state of the runner.
-                        if(m_status.load(std::memory_order_acquire) != Status::Running)
-                        {
-                            break;
-                        }
+                        coreError(m_core->error());
+                        setStatus(Status::Stopped);
+                        return;
                     }
 
-                    cycle += 1;
-                }
-
-                if(m_core->error())
-                {
-                    coreError(m_core->error());
-                    setStatus(Status::Stopped);
+                    // let connected slots handle syscalls
+                    if(m_core->syscall(&Worker::syscall, this, *m_core)) [[unlikely]]
+                    {
+                        // stop this pass of execution if syscall changed the state of the runner.
+                        if(status() != Status::Running)
+                        {
+                            return;
+                        }
+                    }
                 }
             }
+
+            // We are leaving "normally" so we simply pause the runner.
+            setStatus(Status::Paused);
         }
         catch(const std::exception& e)
         {
-            corePanic(QString{e.what()});
+            corePanic(e.what());
+            setStatus(Status::Stopped);
+            return;
         }
-
-        // Whatever is the reason that made us leave, mark status as stopped
-        setStatus(Status::Stopped);
     }
 
+    // can only pause if running
     bool pause()
     {
-        // can only pause if running
         return compareExchangeStatus(Status::Running, Status::Paused);
     }
 
-    bool resume()
+    void addBreakpoint(uint64_t address, bool enabled)
     {
-        // can only resume if purposely paused
-        return compareExchangeStatus(Status::Paused, Status::Running);
+        m_core->add_breakpoint(AxCore::Breakpoint{address, enabled});
     }
 
+    // add a single shot breakpoint on next instruction.
+    // single shot breakpoints do not override the non single shot ones.
+    void setStepOutBreakpoint()
+    {
+        const auto where = AxCore::pc_to_wram(m_core->registers().lr + 1);
+        m_core->add_breakpoint(AxCore::Breakpoint{where, true, true});
+    }
+
+    void setStepOverBreakpoint()
+    {
+        const auto where = AxCore::pc_to_wram(m_core->registers().pc + 1);
+        m_core->add_breakpoint(AxCore::Breakpoint{where, true, true});
+    }
+
+    // always force to stop regardless of current state.
     void stop(bool sync)
     {
-        // always force stopped regardless of current state.
         setStatus(Status::Stopped);
         if(sync)
         {
             // wait until the thread no long holds the lock
             std::lock_guard lock{m_threadRunningMutex};
         }
+    }
+
+    void addBreakpoint(uint64_t address, bool enabled, bool single_shot)
+    {
+        m_messages.push(AddBreakpoint{address, enabled, single_shot});
+    }
+
+    void removeBreakpoint(uint64_t address)
+    {
+        m_messages.push(RemoveBreakpoint{address});
     }
 
     VMRunner::Status status() const noexcept
@@ -218,7 +266,7 @@ signals:
     void loadingError(QString error);
     void corePanic(QString error);
     void coreError(int code);
-    void syscall();
+    void syscall(AxCore& core);
 
 private:
     // user must use high level API stop, resume, pause, etc...
@@ -268,11 +316,32 @@ private:
         return std::make_optional(file.readAll());
     }
 
-    void ready(std::unique_ptr<AxMemory>&& memory, std::unique_ptr<AxCore>&& core)
+    void makeReady(std::unique_ptr<AxMemory>&& memory, std::unique_ptr<AxCore>&& core)
     {
         m_memory = std::move(memory);
         m_core = std::move(core);
-        setStatus(Status::Ready);
+        setStatus(Status::Paused);
+    }
+
+    void processMessages()
+    {
+        while(auto message = m_messages.try_pop())
+        {
+            // clang-format off
+            auto visitors = ax_overloads {
+                [this](const AddBreakpoint& breakpoint)
+                {
+                    m_core->add_breakpoint(AxCore::Breakpoint{breakpoint.address, breakpoint.enabled, breakpoint.single_shot});
+                },
+                [this](const RemoveBreakpoint& breakpoint)
+                {
+                    m_core->remove_breakpoint(breakpoint.address);
+                }
+            };
+            // clang-format on
+
+            std::visit(visitors, *message);
+        }
     }
 
     void cleanup()
@@ -284,6 +353,7 @@ private:
     VMRunner* m_parent{};
     std::unique_ptr<AxMemory> m_memory;
     std::unique_ptr<AxCore> m_core;
+    MessageStack<AsyncCommand> m_messages;
     std::atomic<VMRunner::Status> m_status{VMRunner::Status::Stopped};
     std::mutex m_threadRunningMutex{};
 };
@@ -338,14 +408,37 @@ bool VMRunner::pause()
     return m_worker->pause();
 }
 
-bool VMRunner::resume()
+void VMRunner::stepOut()
 {
-    return m_worker->resume();
+    m_worker->setStepOutBreakpoint();
+    start(std::numeric_limits<uint64_t>::max());
+}
+
+void VMRunner::stepOver()
+{
+    m_worker->setStepOverBreakpoint();
+    start(std::numeric_limits<uint64_t>::max());
+}
+
+void VMRunner::stepIn()
+{
+    // step in is just running a single instruction
+    start(1);
 }
 
 void VMRunner::stop()
 {
     m_worker->stop(false); // do not sync here, this may be called by a slot blocking our thread!
+}
+
+void VMRunner::addBreakpoint(uint64_t address, bool enabled, bool single_shot)
+{
+    m_worker->addBreakpoint(address, enabled, single_shot);
+}
+
+void VMRunner::removeBreakpoint(uint64_t address)
+{
+    m_worker->removeBreakpoint(address);
 }
 
 VMRunner::Status VMRunner::status() const noexcept
@@ -369,8 +462,6 @@ QString toString(VMRunner::Status status)
     {
     case VMRunner::Status::Stopped:
         return QObject::tr("Stopped");
-    case VMRunner::Status::Ready:
-        return QObject::tr("Ready");
     case VMRunner::Status::Paused:
         return QObject::tr("Paused");
     case VMRunner::Status::Running:

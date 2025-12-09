@@ -23,6 +23,7 @@ public:
 
 private:
     void draw_ui();
+    void draw_console();
 
 private:
     std::unique_ptr<Impl> m_impl;

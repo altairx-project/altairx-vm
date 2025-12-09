@@ -144,11 +144,13 @@ void load_host_argv(AxMemory& memory, AxCore& core, std::string_view program_nam
     // forward host env in char* env[] ?
 }
 
+using entry_point_buffer = std::array<std::uint32_t, 8>;
+
 void write_entry_code(AxMemory& memory, AxCore& core, uint64_t main_addr, uint64_t entry_addr)
 {
     const auto main_pc = static_cast<uint32_t>(main_addr / 4ull);
 
-    const std::array<std::uint32_t, 8> entry_code =
+    const entry_point_buffer entry_code =
         {
             1u | AX_EXE_BRU_CALL << 1 | ((main_pc & 0x00FFFFFFu) << 8), // call @main; init LR too to come back here after main returns!
             0u | (((main_pc >> 24) & 0x00FFFFFFu) << 8),                // moveix @main
@@ -176,14 +178,14 @@ void fill_symbol_table(AxCore& core, const AxELFFile& elf, uint64_t entry_addr)
 {
     std::vector<AxCore::Symbol> symbol_table;
     symbol_table.reserve(elf.symbols.size() + 2);
-    symbol_table.emplace_back(AxCore::Symbol{0, "_void"});
-    symbol_table.emplace_back(AxCore::Symbol{entry_addr, "_entry"});
+    symbol_table.emplace_back(AxCore::Symbol{0, 0, "_void"});
+    symbol_table.emplace_back(AxCore::Symbol{entry_addr, sizeof(entry_point_buffer), "_entry"});
 
     for(const auto& symbol : elf.symbols)
     {
         if(symbol.type == AX_STT_FUNC)
         {
-            symbol_table.emplace_back(AxCore::Symbol{symbol.value, symbol.name});
+            symbol_table.emplace_back(AxCore::Symbol{symbol.value, symbol.size, symbol.name});
         }
     }
 
@@ -218,26 +220,30 @@ void do_load_elf_hosted_program(AxCore& core, AxELFFile& elf, std::string_view p
 
 }
 
-void ax_load_elf_program(AxCore& core, const std::filesystem::path& path, std::string_view entry_point_name)
+AxELFFile ax_load_elf_program(AxCore& core, const std::filesystem::path& path, std::string_view entry_point_name)
 {
     AxELFFile elf{path};
     do_load_elf_program(core, elf, entry_point_name);
+    return elf;
 }
 
-void ax_load_elf_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view entry_point_name)
+AxELFFile ax_load_elf_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view entry_point_name)
 {
     AxELFFile elf{buffer, buffer_size};
     do_load_elf_program(core, elf, entry_point_name);
+    return elf;
 }
 
-void ax_load_elf_hosted_program(AxCore& core, const std::filesystem::path& path, std::span<const std::string_view> argv)
+AxELFFile ax_load_elf_hosted_program(AxCore& core, const std::filesystem::path& path, std::span<const std::string_view> argv)
 {
     AxELFFile elf{path};
     do_load_elf_hosted_program(core, elf, path.filename().string(), argv);
+    return elf;
 }
 
-void ax_load_elf_hosted_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view program_name, std::span<const std::string_view> argv)
+AxELFFile ax_load_elf_hosted_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view program_name, std::span<const std::string_view> argv)
 {
     AxELFFile elf{buffer, buffer_size};
     do_load_elf_hosted_program(core, elf, program_name, argv);
+    return elf;
 }

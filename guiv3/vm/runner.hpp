@@ -5,11 +5,11 @@
 #include <QString>
 #include <QThread>
 
-#include <variant>
-#include <message_stack.hpp>
+#include <stdint.h>
 
 class AxCore;
 class AxMemory;
+class AxELFFile;
 
 class VMRunner : public QObject
 {
@@ -19,16 +19,17 @@ public:
     enum class Status
     {
         Stopped, // Runner is stopped. A program must be loaded before doing something else.
-        Ready, // Runner has a program and is ready to be started
-        Paused, // Runner is running but paused.
+        Paused, // Runner has a program and is ready to be started.
         Running, // Runner is running.
     };
+
+    using Command = std::variant<>;
 
     VMRunner(QObject* parent = nullptr);
     ~VMRunner();
 
     // load a file and put PC at specified entry point location
-    void loadRawProgram(const QString& path, std::uint64_t entry_point);
+    void loadRawProgram(const QString& path, uint64_t entry_point);
 
     // load an ELF file and put PC at specified entry point location
     void loadProgram(const QString& path, std::string_view entry_point_name);
@@ -39,29 +40,34 @@ public:
 
     // Pause and resume the core.
     bool pause();
-    bool resume();
 
     // Stop core if running, then resets context.
     // Program must be loaded again from file after stop.
     void stop();
+
+    void addBreakpoint(uint64_t address, bool enabled = true, bool single_shot = false);
+    void removeBreakpoint(uint64_t address);
+
+    void stepOut();
+    void stepOver();
+    void stepIn();
 
     Status status() const noexcept; // return current status.
     const AxCore* core() const noexcept;
     const AxMemory* memory() const noexcept;
 
 signals:
-    /// Input signals
     // Once a program has been loaded, this enable the runner thread to work
-    void start(bool paused);
+    void start(uint64_t cycleCount);
 
-    /// Output signals
+    // Output signals
     void statusChanged(Status newStatus);
     // Received when loading failed. load function returns right after slots are done.
     void loadingError(QString error);
     void corePanic(QString error);
     void coreError(int code);
     // These signals are queued, meaning the runner thread is blocked until the slots return
-    void syscall();
+    void syscall(AxCore& core);
 
 private:
     class Worker;

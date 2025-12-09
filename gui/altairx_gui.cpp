@@ -4,6 +4,11 @@
 #include "altairx_gui.hpp"
 
 #include <array>
+#include <vector>
+#include <iostream>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
@@ -161,11 +166,116 @@ struct AltairXGUI::Impl
     AxImGUWindow context{window};
 };
 
+namespace
+{
+struct ConsoleData
+{
+    bool showed{};
+    std::array<char, 256> input{};
+    std::vector<std::string> items{};
+    std::vector<std::string> commands{};
+    std::vector<std::string> history{};
+    int history_pos{}; // -1: new line, 0..History.Size-1 browsing history.
+    // ImGuiTextFilter filter;
+    bool auto_scroll{};
+    bool scroll_to_bottom{};
+};
+}
+
 struct AltairXGUI::Data
 {
+#if __cplusplus >= 202002L
+    const std::string working_directory{reinterpret_cast<const char*>(fs::current_path().u8string().data())};
+#else
+    const std::string working_directory{fs::current_path().u8string()};
+#endif
+
     bool done{};
     bool selecting_file{};
+    std::string selected_file{};
+    ConsoleData console{};
 };
+
+namespace
+{
+
+std::string from_path(const fs::path& path)
+{
+#if 1 || __cplusplus >= 202002L
+    const auto tmp = path.u8string();
+    return std::string{reinterpret_cast<const char*>(tmp.data()), tmp.size()};
+#else
+    return path.u8string();
+#endif
+}
+
+fs::path to_path(const std::string& path)
+{
+#if __cplusplus >= 202002L
+    std::u8string output;
+    output.resize(path.size());
+    std::memcpy(output.data(), path.data(), path.size());
+    return fs::path{std::move(output)};
+#else
+    return fs::u8path(path);
+#endif
+}
+
+bool is_root_path(const std::string& str)
+{
+#ifdef _WIN32
+    return str.size() >= 3 && str.substr(1, 3) == ":/";
+#else
+    return !str.empty() && str[0] == '/';
+#endif
+}
+
+int select_file_callback(ImGuiInputTextCallbackData* data)
+{
+  std::string& str = *static_cast<std::string*>(data->UserData);
+  if(data->EventFlag == ImGuiInputTextFlags_CallbackResize)
+  {
+      str.resize(data->BufTextLen);
+      data->Buf = str.data();
+  }
+  else if(data->EventFlag == ImGuiInputTextFlags_CallbackCompletion)
+  {
+      const fs::path current_path = to_path(str);
+      const std::string beginning = from_path(current_path.filename());
+      for(auto& entry : fs::directory_iterator{current_path.parent_path()})
+      {
+          if(!entry.is_regular_file() && !entry.is_directory())
+          {
+              continue;
+          }
+
+          const auto name = from_path(entry.path().filename());
+          if(std::empty(beginning))
+          {
+              if(str.back() != '/')
+              {
+                  data->InsertChars(data->CursorPos, "/");
+              }
+              data->InsertChars(data->CursorPos, from_path(name).data());
+              return 0;
+          }
+          else if(name == beginning && entry.is_directory())
+          {
+              data->InsertChars(data->CursorPos, "/");
+              return 0;
+          }
+          else if(name.size() > beginning.size() && name.substr(0, beginning.size()) == beginning)
+          {
+              data->InsertChars(data->CursorPos, from_path(name.substr(beginning.size())).data());
+              return 0;
+          }
+      }
+  }
+
+  return 0;
+}
+
+}
 
 AltairXGUI::AltairXGUI()
     :m_impl{std::make_unique<Impl>()}
@@ -216,7 +326,7 @@ int AltairXGUI::run()
         }
 
         m_impl->context.begin_frame();
-        //ImGui::ShowDemoWindow();
+        ImGui::ShowDemoWindow();
         draw_ui();
         m_impl->context.present();
     }
@@ -235,6 +345,7 @@ void AltairXGUI::draw_ui()
         {
             if(ImGui::MenuItem("Load ELF file"))
             {
+                m_data->selected_file.clear();
                 m_data->selecting_file = true;
             }
 
@@ -246,13 +357,262 @@ void AltairXGUI::draw_ui()
             ImGui::EndMenu();
         }
 
+        if(ImGui::BeginMenu("View"))
+        {
+          ImGui::MenuItem("Console", "CTRL+I", &m_data->console);
+          ImGui::EndMenu();
+        }
+
         ImGui::EndMainMenuBar();
     }
 
+    draw_console();
+
     if(ImGui::Begin("Main Window"))
     {
+        if(m_data->selecting_file)
+        {
+            ImGui::OpenPopup("OpenFile");
+        }
+
+        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        if(ImGui::BeginPopupModal("OpenFile", &m_data->selecting_file, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::Text("Enter file path:");
+            ImGui::Separator();
+            if(ImGui::InputTextWithHint("##", m_data->working_directory.data(), m_data->selected_file.data(), m_data->selected_file.capacity() + 1,
+                ImGuiInputTextFlags_CallbackResize | ImGuiInputTextFlags_CallbackCompletion | ImGuiInputTextFlags_EnterReturnsTrue,
+                &select_file_callback, &m_data->selected_file))
+            {
+                std::cout << "Loaded file " << m_data->selected_file << std::endl;
+            }
+
+            ImGui::EndPopup();
+        }
 
     }
-    
+
     ImGui::End();
+}
+
+void AltairXGUI::draw_console()
+{
+    /*
+  ImGui::SetNextWindowSize(ImVec2(520, 600), ImGuiCond_FirstUseEver);
+  if(!ImGui::Begin("Console", &m_data->console))
+  {
+    ImGui::End();
+  }
+
+  ImGui::TextWrapped("Enter 'HELP' for help.");
+  ImGui::Separator();
+
+  // Reserve enough left-over height for 1 separator + 1 input text
+  const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
+  if(ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve), ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_HorizontalScrollbar))
+  {
+    if(ImGui::BeginPopupContextWindow())
+    {
+      if(ImGui::Selectable("Clear")) 
+      {
+        //ClearLog();
+      }
+      ImGui::EndPopup();
+    }
+
+    // Display every line as a separate entry so we can change their color or add custom widgets.
+    // If you only want raw text you can use ImGui::TextUnformatted(log.begin(), log.end());
+    // NB- if you have thousands of entries this approach may be too inefficient and may require user-side clipping
+    // to only process visible items. The clipper will automatically measure the height of your first item and then
+    // "seek" to display only items in the visible area.
+    // To use the clipper we can replace your standard loop:
+    //      for (int i = 0; i < Items.Size; i++)
+    //   With:
+    //      ImGuiListClipper clipper;
+    //      clipper.Begin(Items.Size);
+    //      while (clipper.Step())
+    //         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+    // - That your items are evenly spaced (same height)
+    // - That you have cheap random access to your elements (you can access them given their index,
+    //   without processing all the ones before)
+    // You cannot this code as-is if a filter is active because it breaks the 'cheap random-access' property.
+    // We would need random-access on the post-filtered list.
+    // A typical application wanting coarse clipping and filtering may want to pre-compute an array of indices
+    // or offsets of items that passed the filtering test, recomputing this array when user changes the filter,
+    // and appending newly elements as they are inserted. This is left as a task to the user until we can manage
+    // to improve this example code!
+    // If your items are of variable height:
+    // - Split them into same height items would be simpler and facilitate random-seeking into your list.
+    // - Consider using manual call to IsRectVisible() and skipping extraneous decoration from your items.
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1)); // Tighten spacing
+    for(const char* item : Items)
+    {
+      if(!Filter.PassFilter(item))
+        continue;
+    
+      // Normally you would store more information in your item than just a string.
+      // (e.g. make Items[] an array of structure, store color/type etc.)
+      ImVec4 color;
+      bool has_color = false;
+      if(strstr(item, "[error]"))
+      {
+          color = ImVec4(1.0f, 0.4f, 0.4f, 1.0f);
+          has_color = true;
+      }
+      else if(strncmp(item, "# ", 2) == 0)
+      {
+          color = ImVec4(1.0f, 0.8f, 0.6f, 1.0f);
+          has_color = true;
+      }
+      if(has_color)
+      {
+          ImGui::PushStyleColor(ImGuiCol_Text, color);
+      }
+      ImGui::TextUnformatted(item);
+      if(has_color)
+      {
+          ImGui::PopStyleColor();
+      }
+    }
+    //if(copy_to_clipboard)
+    //{
+    //    ImGui::LogFinish();
+    //}
+
+    // Keep up at the bottom of the scroll region if we were already at the bottom at the beginning of the frame.
+    // Using a scrollbar or mouse-wheel will take away from the bottom edge.
+    if(ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+    {
+      ImGui::SetScrollHereY(1.0f);
+    }
+
+    ImGui::PopStyleVar();
+  }
+  ImGui::EndChild();
+  ImGui::Separator();
+
+  auto TextEditCallbackStub = [](ImGuiInputTextCallbackData* data)
+  {
+
+    //AddLog("cursor: %d, selection: %d-%d", data->CursorPos, data->SelectionStart, data->SelectionEnd);
+    switch(data->EventFlag)
+    {
+    case ImGuiInputTextFlags_CallbackCompletion:
+    {
+      // Example of TEXT COMPLETION
+
+      // Locate beginning of current word
+      const char* word_end = data->Buf + data->CursorPos;
+      const char* word_start = word_end;
+      while(word_start > data->Buf)
+      {
+        const char c = word_start[-1];
+        if(c == ' ' || c == '\t' || c == ',' || c == ';')
+          break;
+        word_start--;
+      }
+
+      // Build a list of candidates
+      ImVector<const char*> candidates;
+      //for(int i = 0; i < Commands.Size; i++)
+      //  if(Strnicmp(Commands[i], word_start, (int)(word_end - word_start)) == 0)
+      //    candidates.push_back(Commands[i]);
+
+      if(candidates.Size == 0)
+      {
+        // No match
+        //AddLog("No match for \"%.*s\"!\n", (int)(word_end - word_start), word_start);
+      }
+      else if(candidates.Size == 1)
+      {
+        // Single match. Delete the beginning of the word and replace it entirely so we've got nice casing.
+        data->DeleteChars((int)(word_start - data->Buf), (int)(word_end - word_start));
+        data->InsertChars(data->CursorPos, candidates[0]);
+        data->InsertChars(data->CursorPos, " ");
+      }
+      else
+      {
+        // Multiple matches. Complete as much as we can..
+        // So inputting "C"+Tab will complete to "CL" then display "CLEAR" and "CLASSIFY" as matches.
+        int match_len = (int)(word_end - word_start);
+        for(;;)
+        {
+          int c = 0;
+          bool all_candidates_matches = true;
+          for(int i = 0; i < candidates.Size && all_candidates_matches; i++)
+            if(i == 0)
+              c = toupper(candidates[i][match_len]);
+            else if(c == 0 || c != toupper(candidates[i][match_len]))
+              all_candidates_matches = false;
+          if(!all_candidates_matches)
+            break;
+          match_len++;
+        }
+
+        if(match_len > 0)
+        {
+          data->DeleteChars((int)(word_start - data->Buf), (int)(word_end - word_start));
+          data->InsertChars(data->CursorPos, candidates[0], candidates[0] + match_len);
+        }
+
+        // List matches
+        //AddLog("Possible matches:\n");
+        //for(int i = 0; i < candidates.Size; i++)
+          //AddLog("- %s\n", candidates[i]);
+      }
+
+      break;
+    }
+    //case ImGuiInputTextFlags_CallbackHistory:
+    //{
+    //  // Example of HISTORY
+    //  const int prev_history_pos = HistoryPos;
+    //  if(data->EventKey == ImGuiKey_UpArrow)
+    //  {
+    //    if(HistoryPos == -1)
+    //      HistoryPos = History.Size - 1;
+    //    else if(HistoryPos > 0)
+    //      HistoryPos--;
+    //  }
+    //  else if(data->EventKey == ImGuiKey_DownArrow)
+    //  {
+    //    if(HistoryPos != -1)
+    //      if(++HistoryPos >= History.Size)
+    //        HistoryPos = -1;
+    //  }
+    //
+    //  // A better implementation would preserve the data on the current input line along with cursor position.
+    //  if(prev_history_pos != HistoryPos)
+    //  {
+    //    const char* history_str = (HistoryPos >= 0) ? History[HistoryPos] : "";
+    //    data->DeleteChars(0, data->BufTextLen);
+    //    data->InsertChars(0, history_str);
+    //  }
+    //}
+    //}
+    //return 0;
+  };
+  
+  //// Command-line
+  //bool reclaim_focus = false;
+  //ImGuiInputTextFlags input_text_flags = ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_EscapeClearsAll | ImGuiInputTextFlags_CallbackCompletion | ImGuiInputTextFlags_CallbackHistory;
+  //if(ImGui::InputText("Input", InputBuf, IM_ARRAYSIZE(InputBuf), input_text_flags, TextEditCallbackStub, (void*)this))
+  //{
+  //  char* s = InputBuf;
+  //  //Strtrim(s);
+  //  //if(s[0])
+  //  //  ExecCommand(s);
+  //  //strcpy(s, "");
+  //  reclaim_focus = true;
+  //}
+
+  // Auto-focus on window apparition
+  //ImGui::SetItemDefaultFocus();
+  //if(reclaim_focus)
+  //{
+  //    ImGui::SetKeyboardFocusHere(-1); // Auto focus previous widget
+  //}
+
+  ImGui::End();*/
 }

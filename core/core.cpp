@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cassert>
 #include <vector>
+#include <utility>
 #include <iostream>
 
 #include "memory.hpp"
@@ -20,42 +21,34 @@ AxCore::AxCore(AxMemory& memory)
 {
 }
 
-void AxCore::add_breakpoint(uint64_t address, bool enabled)
+void AxCore::add_breakpoint(Breakpoint new_bp)
 {
-    const auto it = std::lower_bound(m_breakpoints.begin(), m_breakpoints.end(), address, [](auto&& left, auto&& right)
+    // insert at the right position to keep them ordered
+    const auto it = std::lower_bound(m_breakpoints.begin(), m_breakpoints.end(), new_bp.address, [](auto&& left, auto&& right)
     {
         return left.address < right;
     });
 
     // check if it already exists
-    if(it != m_breakpoints.end() && it->address == address)
+    if(it != m_breakpoints.end() && it->address == new_bp.address)
     {
-        it->enabled = enabled; // update enable status
+        it->enabled = new_bp.enabled;                            // update enable status
+        it->single_shot = it->single_shot || new_bp.single_shot; // do not make it single_shot if it wasn't
         return;
     }
 
-    m_breakpoints.insert(it, Breakpoint{address, enabled});
-}
-
-void AxCore::set_breakpoint_enabled(uint64_t address, bool enabled)
-{
-    auto it = get_breakpoint(address);
-    if(it != m_breakpoints.end())
-    {
-        it->enabled = enabled;
-    }
+    m_breakpoints.insert(it, new_bp);
 }
 
 void AxCore::remove_breakpoint(uint64_t address)
 {
-    auto it = get_breakpoint(address);
-    if(it != m_breakpoints.end())
+    if(auto* bp = breakpoint_at(address); bp)
     {
-        m_breakpoints.erase(it);
+        m_breakpoints.erase(m_breakpoints.begin() + std::distance(m_breakpoints.data(), bp));
     }
 }
 
-std::vector<AxCore::Breakpoint>::iterator AxCore::get_breakpoint(uint64_t address)
+AxCore::Breakpoint* AxCore::breakpoint_at(uint64_t address)
 {
     const auto it = std::lower_bound(m_breakpoints.begin(), m_breakpoints.end(), address, [](auto&& left, auto&& right)
     {
@@ -64,10 +57,25 @@ std::vector<AxCore::Breakpoint>::iterator AxCore::get_breakpoint(uint64_t addres
 
     if(it != m_breakpoints.end() && it->address == address)
     {
-        return it;
+        return std::to_address(it);
     }
 
-    return m_breakpoints.end();
+    return nullptr;
+}
+
+const AxCore::Breakpoint* AxCore::breakpoint_at(uint64_t address) const
+{
+    const auto it = std::lower_bound(m_breakpoints.begin(), m_breakpoints.end(), address, [](auto&& left, auto&& right)
+    {
+        return left.address < right;
+    });
+
+    if(it != m_breakpoints.end() && it->address == address)
+    {
+        return std::to_address(it);
+    }
+
+    return nullptr;
 }
 
 void AxCore::do_store(uint64_t src, uint64_t addr, uint32_t size)

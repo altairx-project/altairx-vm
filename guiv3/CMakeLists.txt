@@ -6,15 +6,20 @@ qt_add_library(AltairXVMGuiLib STATIC
     mainwindow.cpp
     mainwindow.hpp
     mainwindow.ui
-    widgets/registersview.hpp
-    widgets/registersview.cpp
-    widgets/registersview.ui
-    widgets/memoryview.hpp
-    widgets/memoryview.cpp
-    widgets/memoryview.ui
     widgets/callstackview.hpp
     widgets/callstackview.cpp
     widgets/callstackview.ui
+    widgets/console.hpp
+    widgets/console.cpp
+    widgets/console.ui
+    widgets/disassemblyview.hpp
+    widgets/disassemblyview.cpp
+    widgets/memoryview.hpp
+    widgets/memoryview.cpp
+    widgets/memoryview.ui
+    widgets/registersview.hpp
+    widgets/registersview.cpp
+    widgets/registersview.ui
     vm/runner.hpp
     vm/runner.cpp
 )

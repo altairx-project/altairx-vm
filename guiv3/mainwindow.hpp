@@ -2,6 +2,7 @@
 #define MAINWINDOW_HPP_INCLUDED
 
 #include <QMainWindow>
+#include <QAction>
 
 #include "vm/runner.hpp"
 
@@ -20,15 +21,21 @@ public:
 
 public slots:
     void loadHostedProgram();
+    void playPauseToggled(bool checked);
 
     void statusChanged(VMRunner::Status status);
     void loadingError(QString error);
     void corePanic(QString error);
     void coreError(int code);
-    void syscall();
+    void syscall(AxCore& core);
 
 private:
     Ui::MainWindow* ui;
+    QAction* m_playPauseAction{};
+    QAction* m_stepOutPauseAction{};
+    QAction* m_stepOverPauseAction{};
+    QAction* m_stepInPauseAction{};
+
     VMRunner* m_runner{};
 };
 #endif // MAINWINDOW_HPP

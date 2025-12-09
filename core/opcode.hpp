@@ -144,6 +144,13 @@ struct AxOpcode
     static std::pair<std::string, std::string> to_string(AxOpcode first, AxOpcode second);
 };
 
+enum class SyscallId : uint64_t
+{
+    exit = 1,        // code
+    stdio_read = 2,  // fb, buf, size
+    stdio_write = 3, // fb, buf, size
+};
+
 //-------------------------------
 enum AxOpcodes : uint32_t
 {
