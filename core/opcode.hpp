@@ -6,6 +6,187 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <variant>
+#include <array>
+#include <span>
+
+namespace AxOpcodeArg
+{
+    struct Reg
+    {
+        uint32_t id{};
+        explicit Reg(uint32_t r) noexcept
+            : id{r}
+        {
+        }
+    };
+
+    std::string format_as(Reg r);
+
+    struct FReg
+    {
+        uint32_t id{};
+        explicit FReg(uint32_t r) noexcept
+            : id{r}
+        {
+        }
+    };
+
+    std::string format_as(FReg r);
+
+    struct MDUReg
+    {
+        uint32_t id{};
+        explicit MDUReg(uint32_t r) noexcept
+            : id{r}
+        {
+        }
+    };
+
+    std::string format_as(MDUReg r);
+
+    struct SImm
+    {
+        int64_t value{};
+        explicit SImm(int64_t val) noexcept
+            : value{val}
+        {
+        }
+    };
+
+    std::string format_as(SImm r);
+
+    struct UImm
+    {
+        uint64_t value{};
+        bool hexa_decimal{};
+        explicit UImm(uint64_t val, bool hexa = false) noexcept
+            : value{val}
+            , hexa_decimal{hexa}
+        {
+        }
+    };
+
+    std::string format_as(UImm r);
+
+    struct Size
+    {
+        explicit Size(uint32_t val) noexcept
+            : value{val}
+        {
+        }
+
+        uint32_t value{};
+    };
+
+    std::string format_as(Size r);
+
+    struct FSize
+    {
+        explicit FSize(uint32_t val) noexcept
+            : value{val}
+        {
+        }
+
+        uint32_t value{};
+    };
+
+    std::string format_as(FSize r);
+
+    struct ShiftedReg
+    {
+        explicit ShiftedReg(uint32_t r, uint32_t val) noexcept
+            : reg{r}
+            , shift{val}
+        {
+        }
+
+        uint32_t reg{};
+        uint32_t shift{};
+    };
+
+    std::string format_as(ShiftedReg r);
+
+    struct Operand
+    {
+        Operand() noexcept = default;
+
+        template<typename T>
+        Operand(T&& val)
+            : value{std::forward<T>(val)}
+        {
+        }
+
+        Operand(const Operand& val) = default;
+        Operand& operator=(const Operand& val) = default;
+        Operand(Operand&& val) noexcept = default;
+        Operand& operator=(Operand&& val) noexcept = default;
+
+        std::variant<std::monostate, Reg, FReg, MDUReg, ShiftedReg, SImm, UImm, Size, FSize> value;
+    };
+
+    std::string format_as(Operand r);
+};
+
+class AxOpcodeInfo
+{
+public:
+    explicit AxOpcodeInfo() noexcept = default;
+
+    explicit AxOpcodeInfo(const char* name) noexcept
+        : m_name{name}
+    {
+    }
+
+    template<typename... Args>
+    explicit AxOpcodeInfo(const char* name, Args&&... args) noexcept
+        : m_name{extract_name(name)}
+        , m_count{sizeof...(Args)}
+    {
+        static_assert(sizeof...(Args) <= operand_limit);
+        fill_operands<0>(std::forward<Args>(args)...);
+    }
+
+    // Real string view, not always null-terminated!
+    std::string_view name() const noexcept
+    {
+        return m_name;
+    }
+
+    std::span<const AxOpcodeArg::Operand> operands() const noexcept
+    {
+        return std::span<const AxOpcodeArg::Operand>{m_operands.data(), m_count};
+    }
+
+private:
+    template<std::size_t index, typename T, typename... Args>
+    void fill_operands(T&& value, Args&&... args)
+    {
+        fill_operands<index>(std::forward<T>(value));
+        return fill_operands<index + 1>(std::forward<Args>(args)...);
+    }
+
+    template<std::size_t index, typename T>
+    void fill_operands(T&& value)
+    {
+        m_operands[index] = std::forward<T>(value);
+    }
+
+    static constexpr std::string_view extract_name(std::string_view format)
+    {
+        return std::string_view{format.begin(), std::find_if(format.begin(), format.end(), [](char c)
+        {
+            return !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'));
+        })};
+    }
+
+    static constexpr std::size_t operand_limit = 4;
+
+    std::string_view m_name{};
+    std::size_t m_count{};
+    std::array<AxOpcodeArg::Operand, operand_limit> m_operands;
+};
 
 struct AxOpcode
 {
@@ -141,6 +322,7 @@ struct AxOpcode
         return value == 0;
     }
 
+    static std::pair<AxOpcodeInfo, AxOpcodeInfo> analyze(AxOpcode first, AxOpcode second);
     static std::pair<std::string, std::string> to_string(AxOpcode first, AxOpcode second);
 };
 

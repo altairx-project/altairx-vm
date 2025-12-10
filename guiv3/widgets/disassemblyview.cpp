@@ -14,6 +14,7 @@
 #include "core.hpp"
 #include "memory.hpp"
 #include "opcode.hpp"
+#include "utilities.hpp"
 
 namespace
 {
@@ -286,6 +287,11 @@ public:
     {
         clearDebugComment();
 
+        if(comment.isEmpty())
+        {
+            return;
+        }
+
         QTextBlock block = document()->findBlockByLineNumber(line);
         QTextCursor cursor{block};
         if(!cursor.isNull())
@@ -466,8 +472,25 @@ void DisassemblyView::onStatusChanged(VMRunner::Status status)
         auto it = std::lower_bound(m_impl->lineToAddress.begin(), m_impl->lineToAddress.end(), address);
         if(it != m_impl->lineToAddress.end() && *it == address)
         {
+            const auto* wram = static_cast<const uint32_t*>(core->memory().map(*core, address));
+
+            QString comment{};
+            const auto [first, second] = AxOpcode::analyze(wram[0], 0);
+            for(auto&& operand : first.operands())
+            {
+                const auto visitors = ax_overloads{
+                    [core, &comment](AxOpcodeArg::Reg reg)
+                {
+                    comment.append(QString{"%1 = %2; "}.arg(format_as(reg)).arg(core->registers().gpi[reg.id]));
+                },
+                    [](auto&&)
+                {
+                }};
+                std::visit(visitors, operand.value);
+            }
+
             const auto lineNumber = std::distance(m_impl->lineToAddress.begin(), it);
-            m_impl->highligher->setDebugComment(lineNumber, "We are here!");
+            m_impl->highligher->setDebugComment(lineNumber, comment);
             const auto block = m_impl->textEdit->document()->findBlockByLineNumber(lineNumber);
             m_impl->textEdit->setTextCursor(QTextCursor{block});
         }

@@ -9,17 +9,8 @@
 #include "utilities.hpp"
 #include "panic.hpp"
 
-namespace
+namespace AxOpcodeArg
 {
-
-struct Reg
-{
-    uint32_t id{};
-    explicit Reg(uint32_t r) noexcept
-        : id{r}
-    {
-    }
-};
 
 std::string format_as(Reg r)
 {
@@ -60,28 +51,10 @@ std::string format_as(Reg r)
     return fmt::format("r{}", reg);
 }
 
-struct FReg
-{
-    uint32_t id{};
-    explicit FReg(uint32_t r) noexcept
-        : id{r}
-    {
-    }
-};
-
 std::string format_as(FReg r)
 {
     return fmt::format("v{}", r.id);
 }
-
-struct MDUReg
-{
-    uint32_t id{};
-    explicit MDUReg(uint32_t r) noexcept
-        : id{r}
-    {
-    }
-};
 
 std::string format_as(MDUReg r)
 {
@@ -100,30 +73,10 @@ std::string format_as(MDUReg r)
     }
 }
 
-struct SImm
-{
-    int64_t value{};
-    explicit SImm(int64_t val) noexcept
-        : value{val}
-    {
-    }
-};
-
 std::string format_as(SImm imm)
 {
     return fmt::format("{}", imm.value);
 }
-
-struct UImm
-{
-    uint64_t value{};
-    bool hexa_decimal{};
-    explicit UImm(uint64_t val, bool hexa = false) noexcept
-        : value{val}
-        , hexa_decimal{hexa}
-    {
-    }
-};
 
 std::string format_as(UImm imm)
 {
@@ -135,17 +88,7 @@ std::string format_as(UImm imm)
     return fmt::format("{}", imm.value);
 }
 
-struct Size
-{
-    explicit Size(uint32_t val) noexcept
-        : value{val}
-    {
-    }
-
-    uint32_t value{};
-};
-
-std::string format_as(Size size) noexcept
+std::string format_as(Size size)
 {
     switch(size.value)
     {
@@ -162,17 +105,7 @@ std::string format_as(Size size) noexcept
     }
 }
 
-struct FSize
-{
-    explicit FSize(uint32_t val) noexcept
-        : value{val}
-    {
-    }
-
-    uint32_t value{};
-};
-
-std::string format_as(FSize size) noexcept
+std::string format_as(FSize size)
 {
     switch(size.value)
     {
@@ -185,19 +118,7 @@ std::string format_as(FSize size) noexcept
     }
 }
 
-struct ShiftedReg
-{
-    explicit ShiftedReg(uint32_t r, uint32_t val) noexcept
-        : reg{r}
-        , shift{val}
-    {
-    }
-
-    uint32_t reg{};
-    uint32_t shift{};
-};
-
-std::string format_as(ShiftedReg shift) noexcept
+std::string format_as(ShiftedReg shift)
 {
     if(shift.shift > 0)
     {
@@ -207,27 +128,55 @@ std::string format_as(ShiftedReg shift) noexcept
     return fmt::format("{}", Reg(shift.reg));
 }
 
-struct Operand
+std::string format_as(Operand op)
 {
-    template<typename T>
-    explicit Operand(T&& val)
-        : value{std::forward<T>(val)}
+    const auto visitors = ax_overloads
     {
-    }
-
-    std::variant<Reg, FReg, MDUReg, ShiftedReg, SImm, UImm, Size, FSize> value;
-};
-
-std::string format_as(Operand op) noexcept
-{
-    return std::visit([](auto&& alternative) -> std::string
+        [](std::monostate) -> std::string
         {
-        return fmt::format("{}", alternative);
-    },
-        op.value);
+            return "???";
+        },
+            [](auto&& alternative) -> std::string
+        {
+            return fmt::format("{}", alternative);
+        }
+    };
+
+    return std::visit(visitors, op.value);
 }
 
-std::string alu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
+struct StringFormatter
+{
+    using result_type = std::string;
+
+    template<typename... Args>
+    result_type operator()(fmt::format_string<Args...> format, Args&&... args)
+    {
+        return fmt::format(format, std::forward<Args>(args)...);
+    }
+};
+
+struct InfoFormatter
+{
+    using result_type = AxOpcodeInfo;
+
+    template<typename... Args>
+    result_type operator()(const char* name, Args&&... args)
+    {
+        return result_type{name, std::forward<Args>(args)...};
+    }
+
+    // Some formats uses an indirect way to specify the name,
+    // using formatter("{}", name) instead of formatter("name")
+    template<typename... Args>
+    result_type operator()(const char*, const char* name, Args&&... args)
+    {
+        return result_type{name, std::forward<Args>(args)...};
+    }
+};
+
+template<typename Formatter>
+typename Formatter::result_type analyze_alu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto output = [op]() -> Reg
     {
@@ -259,19 +208,19 @@ std::string alu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     // Most opcodes share the same format!
     const auto format_default = [&](auto&& name)
     {
-        return fmt::format("{}{}\t{}, {}, {}", name, size(), output(), left(), right());
+        return formatter("{}{}\t{}, {}, {}", name, size(), output(), left(), right());
     };
 
     switch(op.operation())
     {
     case AX_EXE_ALU_MOVEIX: // no-op
-        return issecond ? "moveix" : "nop";
+        return issecond ? formatter("moveix") : formatter("nop");
     case AX_EXE_ALU_MOVEI:
-        return fmt::format("movei\t{}, {}", output(), static_cast<int64_t>(sext_bitsize(op.alu_move_imm(), 18) ^ (imm24 << 17)));
+        return formatter("movei\t{}, {}", output(), SImm(static_cast<int64_t>(sext_bitsize(op.alu_move_imm(), 18) ^ (imm24 << 17))));
     case AX_EXE_ALU_EXT:
-        return fmt::format("ext\t{}, {}, {}, {}", output(), left(), op.ext_ins_imm1(), op.ext_ins_imm2());
+        return formatter("ext\t{}, {}, {}, {}", output(), left(), UImm(op.ext_ins_imm1()), UImm(op.ext_ins_imm2()));
     case AX_EXE_ALU_INS:
-        return fmt::format("ins\t{}, {}, {}, {}", output(), left(), op.ext_ins_imm1(), op.ext_ins_imm2());
+        return formatter("ins\t{}, {}, {}, {}", output(), left(), UImm(op.ext_ins_imm1()), UImm(op.ext_ins_imm2()));
 
     case AX_EXE_ALU_MAX:
         return format_default("max");
@@ -288,13 +237,13 @@ std::string alu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
         return format_default("subs");
 
     case AX_EXE_ALU_CMP:
-        return fmt::format("cmp{}\t{}, {}", size(), left(), right());
+        return formatter("cmp{}\t{}, {}", size(), left(), right());
     case AX_EXE_ALU_BIT:
-        return fmt::format("bit{}\t{}, {}", size(), left(), right());
+        return formatter("bit{}\t{}, {}", size(), left(), right());
     case AX_EXE_ALU_TEST:
-        return fmt::format("test{}\t{}, {}", size(), left(), right());
+        return formatter("test{}\t{}, {}", size(), left(), right());
     case AX_EXE_ALU_TESTFR:
-        return fmt::format("testfr{}\t{}", size(), right());
+        return formatter("testfr{}\t{}", size(), right());
 
     case AX_EXE_ALU_ADD:
         return format_default("add");
@@ -332,11 +281,12 @@ std::string alu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     case AX_EXE_ALU_CMOVE:
         return format_default("cmove");
     default:
-        return {};
+        return typename Formatter::result_type{};
     }
 }
 
-std::string mdu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
+template<typename Formatter>
+typename Formatter::result_type analyze_mdu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto output = [op]() -> Reg
     {
@@ -368,23 +318,23 @@ std::string mdu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     switch(op.operation())
     {
     case AX_EXE_MDU_DIV:
-        return fmt::format("div{}\t{}, {}", size(), left(), right());
+        return formatter("div{}\t{}, {}", size(), left(), right());
     case AX_EXE_MDU_DIVU:
-        return fmt::format("divu{}\t{}, {}", size(), left(), right());
+        return formatter("divu{}\t{}, {}", size(), left(), right());
     case AX_EXE_MDU_MUL:
-        return fmt::format("mul{}\t{}, {}", size(), left(), right());
+        return formatter("mul{}\t{}, {}", size(), left(), right());
     case AX_EXE_MDU_MULU:
-        return fmt::format("mulu{}\t{}, {}", size(), left(), right());
+        return formatter("mulu{}\t{}, {}", size(), left(), right());
     case AX_EXE_MDU_GETMD:
-        return fmt::format("move{}\t{}, {}", size(), output(), MDUReg(op.mdu_pq()));
+        return formatter("move{}\t{}, {}", size(), output(), MDUReg(op.mdu_pq()));
     case AX_EXE_MDU_SETMD:
-        return fmt::format("move{}\t{}, {}", size(), MDUReg(op.mdu_pq()), left());
+        return formatter("move{}\t{}, {}", size(), MDUReg(op.mdu_pq()), left());
     default:
-        return {};
+        return typename Formatter::result_type{};
     }
 }
-
-std::string lsu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
+template<typename Formatter>
+typename Formatter::result_type analyze_lsu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto output = [op]() -> Reg
     {
@@ -415,31 +365,32 @@ std::string lsu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     switch(op.operation())
     {
     case AX_EXE_LSU_LD:
-        return fmt::format("ld{}\t{}, {}[{}]", size(), output(), left(), right(false));
+        return formatter("ld{}\t{}, {}[{}]", size(), output(), left(), right(false));
     case AX_EXE_LSU_LDS:
-        return fmt::format("lds{}\t{}, {}[{}]", size(), output(), left(), right(false));
+        return formatter("lds{}\t{}, {}[{}]", size(), output(), left(), right(false));
     case AX_EXE_LSU_FLD:
-        return fmt::format("fld{}\t{}, {}[{}]", size(), output(), left(), right(false));
+        return formatter("fld{}\t{}, {}[{}]", size(), output(), left(), right(false));
     case AX_EXE_LSU_ST:
-        return fmt::format("st{}\t{}, {}[{}]", size(), output(), left(), right(false));
+        return formatter("st{}\t{}, {}[{}]", size(), output(), left(), right(false));
     case AX_EXE_LSU_FST:
-        return fmt::format("fst{}\t{}, {}[{}]", size(), output(), left(), right(false));
+        return formatter("fst{}\t{}, {}[{}]", size(), output(), left(), right(false));
     case AX_EXE_LSU_LDI:
-        return fmt::format("ld{}\t{}, {}[{}]", size(), output(), right(true), left());
+        return formatter("ld{}\t{}, {}[{}]", size(), output(), right(true), left());
     case AX_EXE_LSU_LDIS:
-        return fmt::format("lds{}\t{}, {}[{}]", size(), output(), right(true), left());
+        return formatter("lds{}\t{}, {}[{}]", size(), output(), right(true), left());
     case AX_EXE_LSU_FLDI:
-        return fmt::format("fld{}\t{}, {}[{}]", size(), output(), right(true), left());
+        return formatter("fld{}\t{}, {}[{}]", size(), output(), right(true), left());
     case AX_EXE_LSU_STI:
-        return fmt::format("st{}\t{}, {}[{}]", size(), output(), right(true), left());
+        return formatter("st{}\t{}, {}[{}]", size(), output(), right(true), left());
     case AX_EXE_LSU_FSTI:
-        return fmt::format("fst{}\t{}, {}[{}]", size(), output(), right(true), left());
+        return formatter("fst{}\t{}, {}[{}]", size(), output(), right(true), left());
     default:
-        return {};
+        return typename Formatter::result_type{};
     }
 }
 
-std::string fpu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
+template<typename Formatter>
+typename Formatter::result_type analyze_fpu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto output = [op]() -> FReg
     {
@@ -466,17 +417,17 @@ std::string fpu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     {
         if(unary)
         {
-            return fmt::format("{}{}\t{}, {}", name, size(), output(), left());
+            return formatter("{}{}\t{}, {}", name, size(), output(), left());
         }
 
-        return fmt::format("{}{}\t{}, {}, {}", name, size(), output(), left(), right());
+        return formatter("{}{}\t{}, {}, {}", name, size(), output(), left(), right());
     };
 
     const auto format_overlapped = [&](auto&& base_name, auto&& overlapped_name, bool unary = false)
     {
         if(op.size() == 3)
         {
-            return fmt::format("{}\t {}, {}", overlapped_name, output(), left());
+            return formatter("{}\t {}, {}", overlapped_name, output(), left());
         }
 
         return format_default(base_name, unary);
@@ -519,13 +470,14 @@ std::string fpu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     case AX_EXE_FPU_FMOVE:
         return format_default("fmove", true);
     case AX_EXE_FPU_FCMP:
-        return fmt::format("fcmp{}\t{}, {}", size(), left(), right());
+        return formatter("fcmp{}\t{}, {}", size(), left(), right());
     default:
-        return {};
+        return typename Formatter::result_type{};
     }
 }
 
-std::string efu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
+template<typename Formatter>
+typename Formatter::result_type analyze_efu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto output = [op]() -> FReg
     {
@@ -552,10 +504,10 @@ std::string efu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     {
         if(unary)
         {
-            return fmt::format("{}{}\t{}", name, size(), left());
+            return formatter("{}{}\t{}", name, size(), left());
         }
 
-        return fmt::format("{}{}\t{}, {}", name, size(), left(), right());
+        return formatter("{}{}\t{}, {}", name, size(), left(), right());
     };
 
     switch(op.operation())
@@ -575,15 +527,16 @@ std::string efu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     case AX_EXE_EFU_INVSQRT:
         format_default("finvsqrt", true);
     case AX_EXE_EFU_SETEF:
-        return fmt::format("setef\t{}", left());
+        return formatter("setef\t{}", left());
     case AX_EXE_EFU_GETEF:
-        return fmt::format("getef\t{}", output());
+        return formatter("getef\t{}", output());
     default:
-        return {};
+        return typename Formatter::result_type{};
     }
 }
 
-std::string bru_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
+template<typename Formatter>
+typename Formatter::result_type analyze_bru_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto reg_a = [op]() -> Reg
     {
@@ -613,60 +566,62 @@ std::string bru_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
     switch(op.operation())
     {
     case AX_EXE_BRU_BEQ:
-        return fmt::format("beq\t{}", relative23());
+        return formatter("beq\t{}", relative23());
     case AX_EXE_BRU_BNE:
-        return fmt::format("bne\t{}", relative23());
+        return formatter("bne\t{}", relative23());
     case AX_EXE_BRU_BLT:
-        return fmt::format("blt\t{}", relative23());
+        return formatter("blt\t{}", relative23());
     case AX_EXE_BRU_BGE:
-        return fmt::format("bge\t{}", relative23());
+        return formatter("bge\t{}", relative23());
     case AX_EXE_BRU_BEQU:
-        return fmt::format("bequ\t{}", relative23());
+        return formatter("bequ\t{}", relative23());
     case AX_EXE_BRU_BNEU:
-        return fmt::format("bneu\t{}", relative23());
+        return formatter("bneu\t{}", relative23());
     case AX_EXE_BRU_BLTU:
-        return fmt::format("bltu\t{}", relative23());
+        return formatter("bltu\t{}", relative23());
     case AX_EXE_BRU_BGEU:
-        return fmt::format("bgeu\t{}", relative23());
+        return formatter("bgeu\t{}", relative23());
     case AX_EXE_BRU_BRA:
-        return fmt::format("bra\t{}", relative24());
+        return formatter("bra\t{}", relative24());
     case AX_EXE_BRU_CALLR:
-        return fmt::format("callr\t{}", relative24());
+        return formatter("callr\t{}", relative24());
     case AX_EXE_BRU_JUMP:
-        return fmt::format("jump\t{}", absolute24());
+        return formatter("jump\t{}", absolute24());
     case AX_EXE_BRU_CALL:
-        return fmt::format("call\t{}", absolute24());
+        return formatter("call\t{}", absolute24());
     case AX_EXE_BRU_INDIRECTCALLR:
-        return fmt::format("callr\t{}, {}", reg_b(), reg_a());
+        return formatter("callr\t{}, {}", reg_b(), reg_a());
     case AX_EXE_BRU_INDIRECTCALL:
-        return fmt::format("call\t{}, {}", reg_b(), reg_a());
+        return formatter("call\t{}, {}", reg_b(), reg_a());
     default:
-        return {};
+        return typename Formatter::result_type{};
     }
 }
 
-std::string cu_opcode_to_string(AxOpcode op, uint64_t imm24, bool issecond)
+template<typename Formatter>
+typename Formatter::result_type analyze_cu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
 {
     switch(op.operation())
     {
     case AX_EXE_CU_GETIR:
-        return "getir";
+        return formatter("getir");
     case AX_EXE_CU_SETFR:
-        return "setfr";
+        return formatter("setfr");
     case AX_EXE_CU_MMU:
-        return "mmu";
+        return formatter("mmu");
     case AX_EXE_CU_BRK:
-        return "brk";
+        return formatter("brk");
     case AX_EXE_CU_SYSCALL:
-        return "syscall";
+        return formatter("syscall");
     case AX_EXE_CU_RETI:
-        return "reti";
+        return formatter("reti");
     default:
-        return {};
+        return typename Formatter::result_type{};
     }
 }
 
-std::string opcode_to_string(AxOpcode opcode, uint32_t slot, uint64_t imm24)
+template<typename Formatter>
+typename Formatter::result_type analyze_opcode(Formatter formatter, AxOpcode opcode, uint32_t slot, uint64_t imm24)
 {
     const auto issue = (slot << 3) | opcode.unit();
     switch(issue)
@@ -678,40 +633,59 @@ std::string opcode_to_string(AxOpcode opcode, uint32_t slot, uint64_t imm24)
     case 8:
         [[fallthrough]];
     case 9:
-        return alu_opcode_to_string(opcode, imm24, slot);
+        return analyze_alu_opcode(formatter, opcode, imm24, slot);
     case 2:
         [[fallthrough]];
     case 10:
-        return lsu_opcode_to_string(opcode, imm24, slot);
+        return analyze_lsu_opcode(formatter, opcode, imm24, slot);
     case 3:
         [[fallthrough]];
     case 11:
-        return fpu_opcode_to_string(opcode, imm24, slot);
+        return analyze_fpu_opcode(formatter, opcode, imm24, slot);
     case 5:
-        return efu_opcode_to_string(opcode, imm24, slot);
+        return analyze_efu_opcode(formatter, opcode, imm24, slot);
     case 6:
-        return mdu_opcode_to_string(opcode, imm24, slot);
+        return analyze_mdu_opcode(formatter, opcode, imm24, slot);
     case 7:
-        return bru_opcode_to_string(opcode, imm24, slot);
+        return analyze_bru_opcode(formatter, opcode, imm24, slot);
     case 13:
-        return cu_opcode_to_string(opcode, imm24, slot);
+        return analyze_cu_opcode(formatter, opcode, imm24, slot);
     // case 14:
     //     execute_vu(opcode, imm24);
     //     break;
     default:
-        return {};
+        return typename Formatter::result_type{};
     }
 }
 
+}
+
+std::pair<AxOpcodeInfo, AxOpcodeInfo> AxOpcode::analyze(AxOpcode first, AxOpcode second)
+{
+    using namespace AxOpcodeArg;
+
+    if(first.is_bundle())
+    {
+        const uint64_t imm24 = first.is_bundle() && second.is_moveix() ? second.moveix_imm24() : 0ull;
+        return std::make_pair(
+            analyze_opcode(InfoFormatter{}, first, 0, imm24),
+            analyze_opcode(InfoFormatter{}, second, 1, imm24));
+    }
+
+    return std::make_pair(analyze_opcode(InfoFormatter{}, first, 0, 0), AxOpcodeInfo{});
 }
 
 std::pair<std::string, std::string> AxOpcode::to_string(AxOpcode first, AxOpcode second)
 {
+    using namespace AxOpcodeArg;
+
     if(first.is_bundle())
     {
         const uint64_t imm24 = first.is_bundle() && second.is_moveix() ? second.moveix_imm24() : 0ull;
-        return std::make_pair(opcode_to_string(first, 0, imm24), opcode_to_string(second, 1, imm24));
+        return std::make_pair(
+            analyze_opcode(StringFormatter{}, first, 0, imm24),
+            analyze_opcode(StringFormatter{}, second, 1, imm24));
     }
 
-    return std::make_pair(opcode_to_string(first, 0, 0), std::string{});
+    return std::make_pair(analyze_opcode(StringFormatter{}, first, 0, 0), std::string{});
 }
