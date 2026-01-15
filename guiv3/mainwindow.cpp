@@ -114,11 +114,6 @@ void MainWindow::statusChanged(VMRunner::Status status)
     m_stepOverPauseAction->setEnabled(status == VMRunner::Status::Paused);
     m_stepInPauseAction->setEnabled(status == VMRunner::Status::Paused);
 
-    if(status == VMRunner::Status::Paused)
-    {
-
-    }
-
     ui->console->outputArgText("-- Core status changed to %1", toString(status));
 }
 

@@ -223,64 +223,36 @@ public:
     Highlighter(QTextDocument* parent = nullptr)
         : QSyntaxHighlighter(parent)
     {
-        const auto commentPattern = QStringLiteral(";[^\n]*");
-        QTextCharFormat commentFormat{};
-        commentFormat.setForeground(Qt::darkGreen);
-        m_rules.emplace_back(QRegularExpression(commentPattern), commentFormat);
+        const auto addRule = [this](const QString& regex, const QColor& color, int weight = QFont::Normal)
+        {
+            QTextCharFormat format{};
+            format.setForeground(color);
+            format.setFontWeight(weight);
+            m_rules.emplace_back(QRegularExpression(regex), format);
+        };
 
-        const auto stringPattern = QStringLiteral("\"(?:[^\\\\\"]|\\\\.)*\"");
-        QTextCharFormat stringFormat{};
-        stringFormat.setForeground(Qt::darkRed);
-        m_rules.emplace_back(QRegularExpression(stringPattern), stringFormat);
-
-        const auto labelPattern = QStringLiteral("\\b\\w*:");
-        QTextCharFormat labelFormat{};
-        labelFormat.setForeground(Qt::blue);
-        labelFormat.setFontWeight(QFont::Bold);
-        m_rules.emplace_back(QRegularExpression(labelPattern), labelFormat);
-
-        const auto constantPattern = QStringLiteral("\\.\\w+");
-        QTextCharFormat constantFormat{};
-        constantFormat.setForeground(Qt::darkGreen);
-        m_rules.emplace_back(QRegularExpression(constantPattern), constantFormat);
-
-        const auto controlKeywordPattern = QStringLiteral("\\b(bne|beq|bl|ble|bg|bge|bls|bles|bgs|bges|bra|loop|jump|call|jumpbr|callbr|ret|reti|syscall|int)\\b");
-        QTextCharFormat controlKeywordFormat{};
-        controlKeywordFormat.setForeground(Qt::darkMagenta);
-        controlKeywordFormat.setFontWeight(QFont::Bold);
-        m_rules.emplace_back(QRegularExpression(controlKeywordPattern), controlKeywordFormat);
-
-        const auto fixedKeywordPattern = QStringLiteral("\\b(nop|moveix|ext|ins|movei|moven|umove|move)\\b");
-        QTextCharFormat fixedKeywordFormat{};
-        fixedKeywordFormat.setForeground(Qt::darkCyan);
-        fixedKeywordFormat.setFontWeight(QFont::Bold);
-        m_rules.emplace_back(QRegularExpression(fixedKeywordPattern), fixedKeywordFormat);
-
-        const auto sizedKeywordPattern = QStringLiteral("\\b(add|sub|xor|or|and|lsl|asr|lsr|se|slts|sltu|sand|hadd|hsub|hmul|hto|cmp|test|cmpfr|testfr|cmove|sext|rtl|rtr|adc|sbc|ld|st|ldv|stv|lds|sts|ldvs|stvs|div|divu|mul|mulu)(\\.[bwdq])?\\b");
-        QTextCharFormat sizedKeywordFormat{};
-        sizedKeywordFormat.setForeground(Qt::darkCyan);
-        sizedKeywordFormat.setFontWeight(QFont::Bold);
-        m_rules.emplace_back(QRegularExpression(sizedKeywordPattern), sizedKeywordFormat);
-
-        const auto variablePattern = QStringLiteral("\\b(r|a|t|n|s|S|R|A|T|N|sp|SP)\\d+\\b");
-        QTextCharFormat variableFormat{};
-        variableFormat.setForeground(Qt::darkYellow);
-        m_rules.emplace_back(QRegularExpression(variablePattern), variableFormat);
-
-        const auto languageVariablePattern = QStringLiteral("\\b(LR|lr|BR|br|LC|lc|FR|fr|PC|pc|IR|ir|CC|cc|IC|ic|PL|pl|PH|ph|PQ|pq|PR|pr)\\b");
-        QTextCharFormat languageVariableFormat{};
-        languageVariableFormat.setForeground(Qt::darkRed);
-        m_rules.emplace_back(QRegularExpression(languageVariablePattern), languageVariableFormat);
-
-        const auto numericsPattern = QStringLiteral("\\b(0x|0X|0b|0B|0o|0O|\\d)[\\dA-Fa-f]*(\\.\\d*(f|)|)\\b");
-        QTextCharFormat numericsFormat{};
-        numericsFormat.setForeground(Qt::darkRed);
-        m_rules.emplace_back(QRegularExpression(numericsPattern), numericsFormat);
-
-        const auto operatorPattern = QStringLiteral(",");
-        QTextCharFormat operatorFormat{};
-        operatorFormat.setForeground(Qt::darkGray);
-        m_rules.emplace_back(QRegularExpression(operatorPattern), operatorFormat);
+        // comment
+        addRule(QStringLiteral(";[^\n]*"), Qt::darkGreen);
+        // string
+        addRule(QStringLiteral("\"(?:[^\\\\\"]|\\\\.)*\""), Qt::darkRed);
+        // label
+        addRule(QStringLiteral("\\b\\w*:"), Qt::blue, QFont::Bold);
+        // directives
+        addRule(QStringLiteral("\\.\\w+"), Qt::darkGreen);
+        // control-flow instructions
+        addRule(QStringLiteral("\\b(bne|beq|bl|ble|bg|bge|bls|bles|bgs|bges|bra|loop|jump|call|jumpbr|callbr|ret|reti|syscall|int)\\b"), Qt::darkMagenta, QFont::Bold);
+        // fixed instructions
+        addRule(QStringLiteral("\\b(nop|moveix|ext|ins|movei|moven|umove|move)\\b"), Qt::darkCyan, QFont::Bold);
+        // sized instructions
+        addRule(QStringLiteral("\\b(add|sub|xor|or|and|lsl|asr|lsr|se|slts|sltu|sand|hadd|hsub|hmul|hto|cmp|test|cmpfr|testfr|cmove|sext|rtl|rtr|adc|sbc|ld|st|ldv|stv|lds|sts|ldvs|stvs|div|divu|mul|mulu)(\\.[bwdq])?\\b"), Qt::darkCyan, QFont::Bold);
+        // general purpose registers
+        addRule(QStringLiteral("\\b(r|a|t|n|s|S|R|A|T|N|sp|SP)\\d+\\b"), Qt::darkYellow);
+        // special registers
+        addRule(QStringLiteral("\\b(LR|lr|BR|br|LC|lc|FR|fr|PC|pc|IR|ir|CC|cc|IC|ic|PL|pl|PH|ph|PQ|pq|PR|pr)\\b"), Qt::darkRed);
+        // numerics
+        addRule(QStringLiteral("\\b(0x|0X|0b|0B|0o|0O|\\d)[\\dA-Fa-f]*(\\.\\d*(f|)|)\\b"), Qt::darkRed);
+        // operator
+        addRule(QStringLiteral(","), Qt::darkGray);
     }
 
     void setDebugComment(int line, QString comment)
@@ -359,6 +331,18 @@ struct DisassemblyView::Internals
     Highlighter* highligher{};
     BreakpointSidebar* sidebar{};
     std::vector<uint64_t> lineToAddress{};
+
+    // -1 if address is out of document, line index otherwise
+    int64_t lineFromAddress(uint64_t address)
+    {
+        const auto it = std::lower_bound(lineToAddress.begin(), lineToAddress.end(), address);
+        if(it != lineToAddress.end() && *it == address)
+        {
+            return std::distance(lineToAddress.begin(), it);
+        }
+
+        return -1;
+    }
 };
 
 DisassemblyView::DisassemblyView(QWidget* parent)
@@ -375,6 +359,8 @@ DisassemblyView::DisassemblyView(QWidget* parent)
     m_impl->textEdit->setReadOnly(true);
     m_impl->textEdit->setBackgroundVisible(false);
     m_impl->textEdit->setPlaceholderText(tr("Assembly will show here when paused..."));
+    // this is required to ensure one line == one info (label, instruction, ...)
+    m_impl->textEdit->setWordWrapMode(QTextOption::WrapMode::NoWrap);
 
     m_impl->sidebar = new BreakpointSidebar{m_impl->textEdit};
     m_impl->sidebar->setLineToAddress(m_impl->lineToAddress);
@@ -414,6 +400,7 @@ void DisassemblyView::disassemble()
     m_impl->textEdit->clear();
     m_impl->lineToAddress.clear();
 
+    AxPrettyFormatter formatter{*core};
     const uint32_t* wram = reinterpret_cast<const uint32_t*>(core->memory().map(*core, AxMemory::WRAM_BEGIN));
 
     uint64_t lastAddress{};
@@ -425,38 +412,56 @@ void DisassemblyView::disassemble()
             continue; // skip aliases
         }
 
-        m_impl->textEdit->appendPlainText(QString{"%1:"}.arg(symbol.name));
+        lastAddress = symbol.address;
 
         uint64_t currentOffset{};
         while(currentOffset < symbol.size)
         {
-            const auto currentAddr = AxMemory::WRAM_BEGIN + symbol.address + currentOffset;
-            const auto currentIndex = (symbol.address + currentOffset) / 4ull;
+            const uint64_t programAddress = symbol.address + currentOffset;
+            const uint64_t pc = programAddress / 4ull;
+            const uint64_t wramAddress = AxCore::pc_to_wram(pc);
 
-            if(currentOffset == 0)
-            {
-                m_impl->lineToAddress.emplace_back(currentAddr); // this is for the symbol
-            }
-
-            auto [first, second] = AxOpcode::to_string(wram[currentIndex], wram[currentIndex + 1u]);
-            if(first.empty())
+            auto [first, second] = AxOpcode::analyze(wram[pc], wram[pc + 1u]);
+            if(!first.valid())
             {
                 break; // failed to decode, continue to next symbol
             }
 
-            m_impl->lineToAddress.emplace_back(currentAddr); // this is for the asm line
-            m_impl->textEdit->appendPlainText(QString{"0x%1\t%2"}.arg(currentAddr, 16, 16, u'0').arg(first));
-            currentOffset += 4;
-
-            if(!second.empty())
+            const auto insertText = [&](const AxOpcodeInfo& info, uint64_t offset)
             {
-                m_impl->lineToAddress.emplace_back(currentAddr + 4ull); // this is for the asm line
-                m_impl->textEdit->appendPlainText(QString{"0x%1\t%2"}.arg(currentAddr + 4ull, 16, 16, u'0').arg(second));
+                formatter.set_base_address(programAddress + offset);
+                m_impl->textEdit->appendPlainText(QString{"0x%1\t%2"}.arg(wramAddress + offset, 16, 16, u'0').arg(info.to_string(&formatter)));
+                m_impl->lineToAddress.emplace_back(wramAddress + offset);
                 currentOffset += 4;
+            };
+
+            insertText(first, 0);
+
+            if(second.valid())
+            {
+                insertText(second, 4);
             }
         }
+    }
 
-        lastAddress = symbol.address;
+    for(const auto& [address, name] : formatter.labels())
+    {
+        const auto realAddress = AxMemory::WRAM_BEGIN + address;
+
+        // Find the line number where this address appears
+        auto it = std::lower_bound(m_impl->lineToAddress.begin(), m_impl->lineToAddress.end(), realAddress);
+        if(it != m_impl->lineToAddress.end() && *it == realAddress)
+        {
+            const auto lineNumber = std::distance(m_impl->lineToAddress.begin(), it);
+
+            // Get the block at this line and insert the label before it
+            QTextCursor cursor{m_impl->textEdit->document()->findBlockByLineNumber(lineNumber)};
+            cursor.movePosition(QTextCursor::StartOfBlock);
+            cursor.insertText(QString{"%1:\n"}.arg(name));
+
+            // Update lineToAddress mapping: insert the address for the new label line
+            m_impl->lineToAddress.insert(it, realAddress);
+        }
     }
 }
 
@@ -478,15 +483,39 @@ void DisassemblyView::onStatusChanged(VMRunner::Status status)
             const auto [first, second] = AxOpcode::analyze(wram[0], 0);
             for(auto&& operand : first.operands())
             {
+                // clang-format off
                 const auto visitors = ax_overloads{
                     [core, &comment](AxOpcodeArg::Reg reg)
-                {
-                    comment.append(QString{"%1 = %2; "}.arg(format_as(reg)).arg(core->registers().gpi[reg.id]));
-                },
-                    [](auto&&)
-                {
-                }};
+                    {
+                        comment.append(QString{"%1 = %2 | "}
+                            .arg(format_as(reg))
+                            .arg(core->registers().gpi[reg.id]));
+                    },
+                    [core, &comment](AxOpcodeArg::FReg reg)
+                    {
+                        comment.append(QString{"%1 = %2 | "}
+                            .arg(format_as(reg))
+                            .arg(core->registers().gpf[reg.id]));
+                    },
+                    [core, &comment](AxOpcodeArg::MDUReg reg)
+                    {
+                        comment.append(QString{"%1 = %2 | "}
+                            .arg(format_as(reg))
+                            .arg(core->registers().mdu[reg.id]));
+                    },
+                    [](auto&&) { } // ignore other alternative
+                };
+                // clang-format on
                 std::visit(visitors, operand.value);
+            }
+
+            if(!comment.isEmpty())
+            {
+                comment.erase(comment.end() - 2, comment.end());
+            }
+            else
+            {
+                comment = "no information";
             }
 
             const auto lineNumber = std::distance(m_impl->lineToAddress.begin(), it);

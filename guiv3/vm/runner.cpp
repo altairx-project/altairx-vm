@@ -158,10 +158,19 @@ public:
                     {
                         if(auto* bp = m_core->hit_breakpoint(); bp && bp->enabled) [[unlikely]]
                         {
+                            // if we were stepping out/over but reached a different breakpoint, remove the one added to step
+                            if(m_steppingTo && bp->address != *m_steppingTo)
+                            {
+                                m_core->remove_breakpoint(*m_steppingTo);
+                            }
+
                             if(bp->single_shot)
                             {
                                 m_core->remove_breakpoint(bp);
                             }
+
+                            // always clear this regarless of whatever we reached
+                            m_steppingTo = std::nullopt;
 
                             setStatus(Status::Paused);
                             return;
@@ -217,12 +226,23 @@ public:
     {
         const auto where = AxCore::pc_to_wram(m_core->registers().lr + 1);
         m_core->add_breakpoint(AxCore::Breakpoint{where, true, true});
+        m_steppingTo = where;
     }
 
-    void setStepOverBreakpoint()
+    bool setStepOverBreakpoint()
     {
-        const auto where = AxCore::pc_to_wram(m_core->registers().pc + 1);
-        m_core->add_breakpoint(AxCore::Breakpoint{where, true, true});
+        const AxOpcode current = m_memory->load<uint32_t>(*m_core, AxCore::pc_to_wram(m_core->registers().pc));
+        const auto op = current.operation();
+        // we don't want to run over a ret
+        if(!current.is_ret() && op == AX_EXE_BRU_JUMP || op == AX_EXE_BRU_CALL || op == AX_EXE_BRU_INDIRECTCALL)
+        {
+            const auto where = AxCore::pc_to_wram(m_core->registers().pc + 1 + static_cast<uint32_t>(current.is_bundle()));
+            m_core->add_breakpoint(AxCore::Breakpoint{where, true, true});
+            m_steppingTo = where;
+            return true;
+        }
+
+        return false;
     }
 
     // always force to stop regardless of current state.
@@ -355,6 +375,7 @@ private:
     std::unique_ptr<AxCore> m_core;
     MessageStack<AsyncCommand> m_messages;
     std::atomic<VMRunner::Status> m_status{VMRunner::Status::Stopped};
+    std::optional<std::uint32_t> m_steppingTo{}; // store target pc if any
     std::mutex m_threadRunningMutex{};
 };
 
@@ -416,8 +437,15 @@ void VMRunner::stepOut()
 
 void VMRunner::stepOver()
 {
-    m_worker->setStepOverBreakpoint();
-    start(std::numeric_limits<uint64_t>::max());
+    // if a breakpoint has been placed run until reached. Otherwise it is the same as stepIn
+    if(m_worker->setStepOverBreakpoint())
+    {
+        start(std::numeric_limits<uint64_t>::max());
+    }
+    else
+    {
+        stepIn();
+    }
 }
 
 void VMRunner::stepIn()
