@@ -5,9 +5,11 @@
 
 #include <fmt/format.h>
 #include <variant>
+#include <iterator>
 
 #include "utilities.hpp"
 #include "panic.hpp"
+#include "core.hpp"
 
 namespace AxOpcodeArg
 {
@@ -73,19 +75,29 @@ std::string format_as(MDUReg r)
     }
 }
 
+std::string format_as(UImm imm)
+{
+    if(imm.hexa_decimal)
+    {
+        return fmt::format("{0:#x}", imm.value);
+    }
+
+    return fmt::format("{}", imm.value);
+}
+
 std::string format_as(SImm imm)
 {
     return fmt::format("{}", imm.value);
 }
 
-std::string format_as(UImm imm)
+std::string format_as(AbsoluteLabel label)
 {
-    if(imm.hexa_decimal)
-    {
-      return fmt::format("{0:#x}", imm.value);
-    }
+    return fmt::format("{}", label.value);
+}
 
-    return fmt::format("{}", imm.value);
+std::string format_as(RelativeLabel label)
+{
+    return fmt::format("{}", label.value);
 }
 
 std::string format_as(Size size)
@@ -130,53 +142,20 @@ std::string format_as(ShiftedReg shift)
 
 std::string format_as(Operand op)
 {
-    const auto visitors = ax_overloads
-    {
+    const auto visitors = ax_overloads{
         [](std::monostate) -> std::string
-        {
-            return "???";
-        },
-            [](auto&& alternative) -> std::string
-        {
-            return fmt::format("{}", alternative);
-        }
-    };
+    {
+        return "???";
+    },
+        [](auto&& alternative) -> std::string
+    {
+        return fmt::format("{}", alternative);
+    }};
 
     return std::visit(visitors, op.value);
 }
 
-struct StringFormatter
-{
-    using result_type = std::string;
-
-    template<typename... Args>
-    result_type operator()(fmt::format_string<Args...> format, Args&&... args)
-    {
-        return fmt::format(format, std::forward<Args>(args)...);
-    }
-};
-
-struct InfoFormatter
-{
-    using result_type = AxOpcodeInfo;
-
-    template<typename... Args>
-    result_type operator()(const char* name, Args&&... args)
-    {
-        return result_type{name, std::forward<Args>(args)...};
-    }
-
-    // Some formats uses an indirect way to specify the name,
-    // using formatter("{}", name) instead of formatter("name")
-    template<typename... Args>
-    result_type operator()(const char*, const char* name, Args&&... args)
-    {
-        return result_type{name, std::forward<Args>(args)...};
-    }
-};
-
-template<typename Formatter>
-typename Formatter::result_type analyze_alu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
+AxOpcodeInfo analyze_alu_opcode(AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto output = [op]() -> Reg
     {
@@ -208,19 +187,19 @@ typename Formatter::result_type analyze_alu_opcode(Formatter formatter, AxOpcode
     // Most opcodes share the same format!
     const auto format_default = [&](auto&& name)
     {
-        return formatter("{}{}\t{}, {}, {}", name, size(), output(), left(), right());
+        return AxOpcodeInfo(name, size(), output(), left(), right());
     };
 
     switch(op.operation())
     {
     case AX_EXE_ALU_MOVEIX: // no-op
-        return issecond ? formatter("moveix") : formatter("nop");
+        return issecond ? AxOpcodeInfo("moveix") : AxOpcodeInfo("nop");
     case AX_EXE_ALU_MOVEI:
-        return formatter("movei\t{}, {}", output(), SImm(static_cast<int64_t>(sext_bitsize(op.alu_move_imm(), 18) ^ (imm24 << 17))));
+        return AxOpcodeInfo("movei", output(), SImm(static_cast<int64_t>(sext_bitsize(op.alu_move_imm(), 18) ^ (imm24 << 17))));
     case AX_EXE_ALU_EXT:
-        return formatter("ext\t{}, {}, {}, {}", output(), left(), UImm(op.ext_ins_imm1()), UImm(op.ext_ins_imm2()));
+        return AxOpcodeInfo("ext", output(), left(), UImm(op.ext_ins_imm1()), UImm(op.ext_ins_imm2()));
     case AX_EXE_ALU_INS:
-        return formatter("ins\t{}, {}, {}, {}", output(), left(), UImm(op.ext_ins_imm1()), UImm(op.ext_ins_imm2()));
+        return AxOpcodeInfo("ins", output(), left(), UImm(op.ext_ins_imm1()), UImm(op.ext_ins_imm2()));
 
     case AX_EXE_ALU_MAX:
         return format_default("max");
@@ -237,13 +216,13 @@ typename Formatter::result_type analyze_alu_opcode(Formatter formatter, AxOpcode
         return format_default("subs");
 
     case AX_EXE_ALU_CMP:
-        return formatter("cmp{}\t{}, {}", size(), left(), right());
+        return AxOpcodeInfo("cmp", size(), left(), right());
     case AX_EXE_ALU_BIT:
-        return formatter("bit{}\t{}, {}", size(), left(), right());
+        return AxOpcodeInfo("bit", size(), left(), right());
     case AX_EXE_ALU_TEST:
-        return formatter("test{}\t{}, {}", size(), left(), right());
+        return AxOpcodeInfo("test", size(), left(), right());
     case AX_EXE_ALU_TESTFR:
-        return formatter("testfr{}\t{}", size(), right());
+        return AxOpcodeInfo("testfr", size(), right());
 
     case AX_EXE_ALU_ADD:
         return format_default("add");
@@ -281,12 +260,11 @@ typename Formatter::result_type analyze_alu_opcode(Formatter formatter, AxOpcode
     case AX_EXE_ALU_CMOVE:
         return format_default("cmove");
     default:
-        return typename Formatter::result_type{};
+        return AxOpcodeInfo{};
     }
 }
 
-template<typename Formatter>
-typename Formatter::result_type analyze_mdu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
+AxOpcodeInfo analyze_mdu_opcode(AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto output = [op]() -> Reg
     {
@@ -318,23 +296,23 @@ typename Formatter::result_type analyze_mdu_opcode(Formatter formatter, AxOpcode
     switch(op.operation())
     {
     case AX_EXE_MDU_DIV:
-        return formatter("div{}\t{}, {}", size(), left(), right());
+        return AxOpcodeInfo("div", size(), left(), right());
     case AX_EXE_MDU_DIVU:
-        return formatter("divu{}\t{}, {}", size(), left(), right());
+        return AxOpcodeInfo("divu", size(), left(), right());
     case AX_EXE_MDU_MUL:
-        return formatter("mul{}\t{}, {}", size(), left(), right());
+        return AxOpcodeInfo("mul", size(), left(), right());
     case AX_EXE_MDU_MULU:
-        return formatter("mulu{}\t{}, {}", size(), left(), right());
+        return AxOpcodeInfo("mulu", size(), left(), right());
     case AX_EXE_MDU_GETMD:
-        return formatter("move{}\t{}, {}", size(), output(), MDUReg(op.mdu_pq()));
+        return AxOpcodeInfo("move", size(), output(), MDUReg(op.mdu_pq()));
     case AX_EXE_MDU_SETMD:
-        return formatter("move{}\t{}, {}", size(), MDUReg(op.mdu_pq()), left());
+        return AxOpcodeInfo("move", size(), MDUReg(op.mdu_pq()), left());
     default:
-        return typename Formatter::result_type{};
+        return AxOpcodeInfo{};
     }
 }
-template<typename Formatter>
-typename Formatter::result_type analyze_lsu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
+
+AxOpcodeInfo analyze_lsu_opcode(AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto output = [op]() -> Reg
     {
@@ -365,32 +343,31 @@ typename Formatter::result_type analyze_lsu_opcode(Formatter formatter, AxOpcode
     switch(op.operation())
     {
     case AX_EXE_LSU_LD:
-        return formatter("ld{}\t{}, {}[{}]", size(), output(), left(), right(false));
+        return AxOpcodeInfo("ld", size(), output(), left(), right(false));
     case AX_EXE_LSU_LDS:
-        return formatter("lds{}\t{}, {}[{}]", size(), output(), left(), right(false));
+        return AxOpcodeInfo("lds", size(), output(), left(), right(false));
     case AX_EXE_LSU_FLD:
-        return formatter("fld{}\t{}, {}[{}]", size(), output(), left(), right(false));
+        return AxOpcodeInfo("fld", size(), output(), left(), right(false));
     case AX_EXE_LSU_ST:
-        return formatter("st{}\t{}, {}[{}]", size(), output(), left(), right(false));
+        return AxOpcodeInfo("st", size(), output(), left(), right(false));
     case AX_EXE_LSU_FST:
-        return formatter("fst{}\t{}, {}[{}]", size(), output(), left(), right(false));
+        return AxOpcodeInfo("fst", size(), output(), left(), right(false));
     case AX_EXE_LSU_LDI:
-        return formatter("ld{}\t{}, {}[{}]", size(), output(), right(true), left());
+        return AxOpcodeInfo("ld", size(), output(), right(true), left());
     case AX_EXE_LSU_LDIS:
-        return formatter("lds{}\t{}, {}[{}]", size(), output(), right(true), left());
+        return AxOpcodeInfo("lds", size(), output(), right(true), left());
     case AX_EXE_LSU_FLDI:
-        return formatter("fld{}\t{}, {}[{}]", size(), output(), right(true), left());
+        return AxOpcodeInfo("fld", size(), output(), right(true), left());
     case AX_EXE_LSU_STI:
-        return formatter("st{}\t{}, {}[{}]", size(), output(), right(true), left());
+        return AxOpcodeInfo("st", size(), output(), right(true), left());
     case AX_EXE_LSU_FSTI:
-        return formatter("fst{}\t{}, {}[{}]", size(), output(), right(true), left());
+        return AxOpcodeInfo("fst", size(), output(), right(true), left());
     default:
-        return typename Formatter::result_type{};
+        return AxOpcodeInfo{};
     }
 }
 
-template<typename Formatter>
-typename Formatter::result_type analyze_fpu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
+AxOpcodeInfo analyze_fpu_opcode(AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto output = [op]() -> FReg
     {
@@ -417,17 +394,17 @@ typename Formatter::result_type analyze_fpu_opcode(Formatter formatter, AxOpcode
     {
         if(unary)
         {
-            return formatter("{}{}\t{}, {}", name, size(), output(), left());
+            return AxOpcodeInfo(name, size(), output(), left());
         }
 
-        return formatter("{}{}\t{}, {}, {}", name, size(), output(), left(), right());
+        return AxOpcodeInfo(name, size(), output(), left(), right());
     };
 
     const auto format_overlapped = [&](auto&& base_name, auto&& overlapped_name, bool unary = false)
     {
         if(op.size() == 3)
         {
-            return formatter("{}\t {}, {}", overlapped_name, output(), left());
+            return AxOpcodeInfo(overlapped_name, output(), left());
         }
 
         return format_default(base_name, unary);
@@ -470,14 +447,13 @@ typename Formatter::result_type analyze_fpu_opcode(Formatter formatter, AxOpcode
     case AX_EXE_FPU_FMOVE:
         return format_default("fmove", true);
     case AX_EXE_FPU_FCMP:
-        return formatter("fcmp{}\t{}, {}", size(), left(), right());
+        return AxOpcodeInfo("fcmp", size(), left(), right());
     default:
-        return typename Formatter::result_type{};
+        return AxOpcodeInfo{};
     }
 }
 
-template<typename Formatter>
-typename Formatter::result_type analyze_efu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
+AxOpcodeInfo analyze_efu_opcode(AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto output = [op]() -> FReg
     {
@@ -504,10 +480,10 @@ typename Formatter::result_type analyze_efu_opcode(Formatter formatter, AxOpcode
     {
         if(unary)
         {
-            return formatter("{}{}\t{}", name, size(), left());
+            return AxOpcodeInfo(name, size(), left());
         }
 
-        return formatter("{}{}\t{}, {}", name, size(), left(), right());
+        return AxOpcodeInfo(name, size(), left(), right());
     };
 
     switch(op.operation())
@@ -527,16 +503,15 @@ typename Formatter::result_type analyze_efu_opcode(Formatter formatter, AxOpcode
     case AX_EXE_EFU_INVSQRT:
         format_default("finvsqrt", true);
     case AX_EXE_EFU_SETEF:
-        return formatter("setef\t{}", left());
+        return AxOpcodeInfo("setef", left());
     case AX_EXE_EFU_GETEF:
-        return formatter("getef\t{}", output());
+        return AxOpcodeInfo("getef", output());
     default:
-        return typename Formatter::result_type{};
+        return AxOpcodeInfo{};
     }
 }
 
-template<typename Formatter>
-typename Formatter::result_type analyze_bru_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
+AxOpcodeInfo analyze_bru_opcode(AxOpcode op, uint64_t imm24, bool issecond)
 {
     const auto reg_a = [op]() -> Reg
     {
@@ -548,80 +523,78 @@ typename Formatter::result_type analyze_bru_opcode(Formatter formatter, AxOpcode
         return Reg(op.reg_b());
     };
 
-    const auto relative23 = [op, imm24]() -> SImm
+    const auto relative23 = [op, imm24]() -> RelativeLabel
     {
-        return SImm(static_cast<int64_t>(sext_bitsize(op.bru_imm23(), 23) ^ (imm24 << 22)));
+        return RelativeLabel(static_cast<int64_t>(sext_bitsize(op.bru_imm23(), 23) ^ (imm24 << 22)));
     };
 
-    const auto relative24 = [op, imm24]() -> SImm
+    const auto relative24 = [op, imm24]() -> RelativeLabel
     {
-        return SImm(static_cast<int64_t>(sext_bitsize(op.bru_imm24(), 24) ^ (imm24 << 23)));
+        return RelativeLabel(static_cast<int64_t>(sext_bitsize(op.bru_imm24(), 24) ^ (imm24 << 23)));
     };
 
-    const auto absolute24 = [op, imm24]() -> UImm
+    const auto absolute24 = [op, imm24]() -> AbsoluteLabel
     {
-        return UImm(op.bru_imm24() | (imm24 << 24), true);
+        return AbsoluteLabel(op.bru_imm24() | (imm24 << 24));
     };
 
     switch(op.operation())
     {
     case AX_EXE_BRU_BEQ:
-        return formatter("beq\t{}", relative23());
+        return AxOpcodeInfo("beq", relative23());
     case AX_EXE_BRU_BNE:
-        return formatter("bne\t{}", relative23());
+        return AxOpcodeInfo("bne", relative23());
     case AX_EXE_BRU_BLT:
-        return formatter("blt\t{}", relative23());
+        return AxOpcodeInfo("blt", relative23());
     case AX_EXE_BRU_BGE:
-        return formatter("bge\t{}", relative23());
+        return AxOpcodeInfo("bge", relative23());
     case AX_EXE_BRU_BEQU:
-        return formatter("bequ\t{}", relative23());
+        return AxOpcodeInfo("bequ", relative23());
     case AX_EXE_BRU_BNEU:
-        return formatter("bneu\t{}", relative23());
+        return AxOpcodeInfo("bneu", relative23());
     case AX_EXE_BRU_BLTU:
-        return formatter("bltu\t{}", relative23());
+        return AxOpcodeInfo("bltu", relative23());
     case AX_EXE_BRU_BGEU:
-        return formatter("bgeu\t{}", relative23());
+        return AxOpcodeInfo("bgeu", relative23());
     case AX_EXE_BRU_BRA:
-        return formatter("bra\t{}", relative24());
+        return AxOpcodeInfo("bra", relative24());
     case AX_EXE_BRU_CALLR:
-        return formatter("callr\t{}", relative24());
+        return AxOpcodeInfo("callr", relative24());
     case AX_EXE_BRU_JUMP:
-        return formatter("jump\t{}", absolute24());
+        return AxOpcodeInfo("jump", absolute24());
     case AX_EXE_BRU_CALL:
-        return formatter("call\t{}", absolute24());
+        return AxOpcodeInfo("call", absolute24());
     case AX_EXE_BRU_INDIRECTCALLR:
-        return formatter("callr\t{}, {}", reg_b(), reg_a());
+        return AxOpcodeInfo("callr", reg_b(), reg_a());
     case AX_EXE_BRU_INDIRECTCALL:
-        return formatter("call\t{}, {}", reg_b(), reg_a());
+        return AxOpcodeInfo("call", reg_b(), reg_a());
     default:
-        return typename Formatter::result_type{};
+        return AxOpcodeInfo{};
     }
 }
 
-template<typename Formatter>
-typename Formatter::result_type analyze_cu_opcode(Formatter formatter, AxOpcode op, uint64_t imm24, bool issecond)
+AxOpcodeInfo analyze_cu_opcode(AxOpcode op, uint64_t imm24, bool issecond)
 {
     switch(op.operation())
     {
     case AX_EXE_CU_GETIR:
-        return formatter("getir");
+        return AxOpcodeInfo("getir");
     case AX_EXE_CU_SETFR:
-        return formatter("setfr");
+        return AxOpcodeInfo("setfr");
     case AX_EXE_CU_MMU:
-        return formatter("mmu");
+        return AxOpcodeInfo("mmu");
     case AX_EXE_CU_BRK:
-        return formatter("brk");
+        return AxOpcodeInfo("brk");
     case AX_EXE_CU_SYSCALL:
-        return formatter("syscall");
+        return AxOpcodeInfo("syscall");
     case AX_EXE_CU_RETI:
-        return formatter("reti");
+        return AxOpcodeInfo("reti");
     default:
-        return typename Formatter::result_type{};
+        return AxOpcodeInfo{};
     }
 }
 
-template<typename Formatter>
-typename Formatter::result_type analyze_opcode(Formatter formatter, AxOpcode opcode, uint32_t slot, uint64_t imm24)
+AxOpcodeInfo analyze_opcode(AxOpcode opcode, uint32_t slot, uint64_t imm24)
 {
     const auto issue = (slot << 3) | opcode.unit();
     switch(issue)
@@ -633,59 +606,139 @@ typename Formatter::result_type analyze_opcode(Formatter formatter, AxOpcode opc
     case 8:
         [[fallthrough]];
     case 9:
-        return analyze_alu_opcode(formatter, opcode, imm24, slot);
+        return analyze_alu_opcode(opcode, imm24, slot);
     case 2:
         [[fallthrough]];
     case 10:
-        return analyze_lsu_opcode(formatter, opcode, imm24, slot);
+        return analyze_lsu_opcode(opcode, imm24, slot);
     case 3:
         [[fallthrough]];
     case 11:
-        return analyze_fpu_opcode(formatter, opcode, imm24, slot);
+        return analyze_fpu_opcode(opcode, imm24, slot);
     case 5:
-        return analyze_efu_opcode(formatter, opcode, imm24, slot);
+        return analyze_efu_opcode(opcode, imm24, slot);
     case 6:
-        return analyze_mdu_opcode(formatter, opcode, imm24, slot);
+        return analyze_mdu_opcode(opcode, imm24, slot);
     case 7:
-        return analyze_bru_opcode(formatter, opcode, imm24, slot);
+        return analyze_bru_opcode(opcode, imm24, slot);
     case 13:
-        return analyze_cu_opcode(formatter, opcode, imm24, slot);
+        return analyze_cu_opcode(opcode, imm24, slot);
     // case 14:
     //     execute_vu(opcode, imm24);
     //     break;
     default:
-        return typename Formatter::result_type{};
+        return AxOpcodeInfo{};
     }
 }
 
+}
+
+std::string AxPrettyFormatter::relative_label(uint64_t address)
+{
+    const auto it = m_labels.find(address);
+    if(it == m_labels.end())
+    {
+        return add_label(m_base_address + address, fmt::format("LBB_{}", m_labels.size()));
+    }
+
+    return it->second;
+}
+
+std::string AxPrettyFormatter::absolute_label(uint64_t address)
+{
+    const auto it = m_labels.find(address);
+    if(it == m_labels.end())
+    {
+        const auto& symbols = m_core->symbols();
+        const auto it = std::lower_bound(symbols.begin(), symbols.end(), address, [](auto&& symbol, uint64_t address)
+        {
+            return symbol.address < address;
+        });
+
+        if(it != symbols.end())
+        {
+            if(it->address == address)
+            {
+                return add_label(address, fmt::format("{}", it->name));
+            }
+
+            return add_label(address, fmt::format("{}+{}", it->name, static_cast<int64_t>(address - it->address)));
+        }
+
+        return add_label(address, fmt::format("LBB_{}", m_labels.size()));
+    }
+
+    return it->second;
+}
+
+std::string AxOpcodeInfo::to_string(AxPrettyFormatter* formatter) const
+{
+    std::string output{}; // do not reserve, it may fit in SSO
+    output += m_name;
+
+    std::span ops = operands();
+    if(!ops.empty())
+    {
+        if(std::holds_alternative<AxOpcodeArg::FSize>(m_operands[0].value) || std::holds_alternative<AxOpcodeArg::Size>(m_operands[0].value))
+        {
+            output += AxOpcodeArg::format_as(m_operands[0].value);
+            ops = ops.subspan(1);
+        }
+
+        output += '\t';
+    }
+
+    for(const auto& op : ops)
+    {
+        if(formatter)
+        {
+            const auto visitors = ax_overloads{
+                [](std::monostate) -> std::string
+            {
+                return "???";
+            },
+                [formatter](AxOpcodeArg::RelativeLabel label) -> std::string
+            {
+                return formatter->relative_label(label.value * 4ll);
+            },
+                [formatter](AxOpcodeArg::AbsoluteLabel label) -> std::string
+            {
+                return formatter->absolute_label(label.value * 4ull);
+            },
+                [](auto&& alternative) -> std::string
+            {
+                return AxOpcodeArg::format_as(alternative);
+            }};
+
+            output += std::visit(visitors, op.value);
+        }
+        else
+        {
+            output += AxOpcodeArg::format_as(op.value);
+        }
+
+        output += ',';
+        output += ' ';
+    }
+
+    if(!ops.empty())
+    {
+        output.pop_back(); // remove comma
+        output.pop_back(); // remove last tabulation
+    }
+
+    return output;
 }
 
 std::pair<AxOpcodeInfo, AxOpcodeInfo> AxOpcode::analyze(AxOpcode first, AxOpcode second)
 {
-    using namespace AxOpcodeArg;
-
     if(first.is_bundle())
     {
         const uint64_t imm24 = first.is_bundle() && second.is_moveix() ? second.moveix_imm24() : 0ull;
         return std::make_pair(
-            analyze_opcode(InfoFormatter{}, first, 0, imm24),
-            analyze_opcode(InfoFormatter{}, second, 1, imm24));
+            AxOpcodeArg::analyze_opcode(first, 0, imm24),
+            AxOpcodeArg::analyze_opcode(second, 1, imm24));
     }
 
-    return std::make_pair(analyze_opcode(InfoFormatter{}, first, 0, 0), AxOpcodeInfo{});
-}
-
-std::pair<std::string, std::string> AxOpcode::to_string(AxOpcode first, AxOpcode second)
-{
-    using namespace AxOpcodeArg;
-
-    if(first.is_bundle())
-    {
-        const uint64_t imm24 = first.is_bundle() && second.is_moveix() ? second.moveix_imm24() : 0ull;
-        return std::make_pair(
-            analyze_opcode(StringFormatter{}, first, 0, imm24),
-            analyze_opcode(StringFormatter{}, second, 1, imm24));
-    }
-
-    return std::make_pair(analyze_opcode(StringFormatter{}, first, 0, 0), std::string{});
+    return std::make_pair(AxOpcodeArg::analyze_opcode(first, 0, 0), AxOpcodeInfo{});
 }

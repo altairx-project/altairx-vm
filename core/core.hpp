@@ -24,6 +24,7 @@ class AxCore
 {
 public:
     using Register = uint32_t;
+    static constexpr Register REG_LR = 31;
     static constexpr Register REG_ACC = 56;
     static constexpr Register REG_BA1 = 57;
     static constexpr Register REG_BA2 = 58;
@@ -147,13 +148,13 @@ public:
         {
             if(AxOpcode{opcode1}.is_bundle())
             {
-                auto [first, second] = AxOpcode::to_string(opcode1, opcode2);
-                std::cout << first << " ; " << second << std::endl;
+                auto [first, second] = AxOpcode::analyze(opcode1, opcode2);
+                std::cout << first.to_string(nullptr) << " ; " << second.to_string(nullptr) << std::endl;
             }
             else
             {
-                auto first = AxOpcode::to_string(opcode1, {}).first;
-                std::cout << first << std::endl;
+                auto first = AxOpcode::analyze(opcode1, {}).first;
+                std::cout << first.to_string(nullptr) << std::endl;
             }
         }
 #endif

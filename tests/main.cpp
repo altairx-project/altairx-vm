@@ -59,7 +59,7 @@ TEMPLATE_TEST_CASE("Conditional jumps (ints)", "[brc]", int8_t, int16_t, int32_t
         INFO("sizeof == " << typesize);
         INFO("left == " << left);
         INFO("right == " << right);
-        INFO("opcode: " << AxOpcode::to_string(brc, make_noop_opcode()).first);
+        INFO("opcode: " << AxOpcode::analyze(brc, make_noop_opcode()).first.to_string(nullptr));
         INFO("expected_result == " << expected_result);
 
         core.registers().gpi[1] = left;
@@ -148,7 +148,7 @@ TEMPLATE_TEST_CASE("Conditional jumps (floats)", "[brc]", float, double)
         INFO("sizeof == " << size);
         INFO("left == " << left);
         INFO("right == " << right);
-        INFO("opcode: " << AxOpcode::to_string(brc, make_noop_opcode()).first);
+        INFO("opcode: " << AxOpcode::analyze(brc, make_noop_opcode()).first.to_string(nullptr));
         INFO("expected_result == " << expected_result);
 
         core.registers().gpf[1] = make_reg(left);

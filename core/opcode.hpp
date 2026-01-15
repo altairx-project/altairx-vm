@@ -7,126 +7,186 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <variant>
 #include <array>
 #include <span>
 
 namespace AxOpcodeArg
 {
-    struct Reg
+struct Reg
+{
+    uint32_t id{};
+    explicit Reg(uint32_t r) noexcept
+        : id{r}
     {
-        uint32_t id{};
-        explicit Reg(uint32_t r) noexcept
-            : id{r}
-        {
-        }
-    };
+    }
+};
 
-    std::string format_as(Reg r);
+std::string format_as(Reg r);
 
-    struct FReg
+struct FReg
+{
+    uint32_t id{};
+    explicit FReg(uint32_t r) noexcept
+        : id{r}
     {
-        uint32_t id{};
-        explicit FReg(uint32_t r) noexcept
-            : id{r}
-        {
-        }
-    };
+    }
+};
 
-    std::string format_as(FReg r);
+std::string format_as(FReg r);
 
-    struct MDUReg
+struct MDUReg
+{
+    uint32_t id{};
+    explicit MDUReg(uint32_t r) noexcept
+        : id{r}
     {
-        uint32_t id{};
-        explicit MDUReg(uint32_t r) noexcept
-            : id{r}
-        {
-        }
-    };
+    }
+};
 
-    std::string format_as(MDUReg r);
+std::string format_as(MDUReg r);
 
-    struct SImm
+struct SImm
+{
+    int64_t value{};
+    explicit SImm(int64_t val) noexcept
+        : value{val}
     {
-        int64_t value{};
-        explicit SImm(int64_t val) noexcept
-            : value{val}
-        {
-        }
-    };
+    }
+};
 
-    std::string format_as(SImm r);
+std::string format_as(SImm r);
 
-    struct UImm
+struct AbsoluteLabel
+{
+    uint64_t value{};
+    explicit AbsoluteLabel(uint64_t val) noexcept
+        : value{val}
     {
-        uint64_t value{};
-        bool hexa_decimal{};
-        explicit UImm(uint64_t val, bool hexa = false) noexcept
-            : value{val}
-            , hexa_decimal{hexa}
-        {
-        }
-    };
+    }
+};
 
-    std::string format_as(UImm r);
+std::string format_as(AbsoluteLabel label);
 
-    struct Size
+struct RelativeLabel
+{
+    int64_t value{};
+    explicit RelativeLabel(int64_t val) noexcept
+        : value{val}
     {
-        explicit Size(uint32_t val) noexcept
-            : value{val}
-        {
-        }
+    }
+};
 
-        uint32_t value{};
-    };
+std::string format_as(RelativeLabel label);
 
-    std::string format_as(Size r);
-
-    struct FSize
+struct UImm
+{
+    uint64_t value{};
+    bool hexa_decimal{};
+    explicit UImm(uint64_t val, bool hexa = false) noexcept
+        : value{val}
+        , hexa_decimal{hexa}
     {
-        explicit FSize(uint32_t val) noexcept
-            : value{val}
-        {
-        }
+    }
+};
 
-        uint32_t value{};
-    };
+std::string format_as(UImm r);
 
-    std::string format_as(FSize r);
-
-    struct ShiftedReg
+struct Size
+{
+    explicit Size(uint32_t val) noexcept
+        : value{val}
     {
-        explicit ShiftedReg(uint32_t r, uint32_t val) noexcept
-            : reg{r}
-            , shift{val}
-        {
-        }
+    }
 
-        uint32_t reg{};
-        uint32_t shift{};
-    };
+    uint32_t value{};
+};
 
-    std::string format_as(ShiftedReg r);
+std::string format_as(Size r);
 
-    struct Operand
+struct FSize
+{
+    explicit FSize(uint32_t val) noexcept
+        : value{val}
     {
-        Operand() noexcept = default;
+    }
 
-        template<typename T>
-        Operand(T&& val)
-            : value{std::forward<T>(val)}
-        {
-        }
+    uint32_t value{};
+};
 
-        Operand(const Operand& val) = default;
-        Operand& operator=(const Operand& val) = default;
-        Operand(Operand&& val) noexcept = default;
-        Operand& operator=(Operand&& val) noexcept = default;
+std::string format_as(FSize r);
 
-        std::variant<std::monostate, Reg, FReg, MDUReg, ShiftedReg, SImm, UImm, Size, FSize> value;
-    };
+struct ShiftedReg
+{
+    explicit ShiftedReg(uint32_t r, uint32_t val) noexcept
+        : reg{r}
+        , shift{val}
+    {
+    }
 
-    std::string format_as(Operand r);
+    uint32_t reg{};
+    uint32_t shift{};
+};
+
+std::string format_as(ShiftedReg r);
+
+struct Operand
+{
+    Operand() noexcept = default;
+
+    template<typename T>
+    Operand(T&& val)
+        : value{std::forward<T>(val)}
+    {
+    }
+
+    Operand(const Operand& val) = default;
+    Operand& operator=(const Operand& val) = default;
+    Operand(Operand&& val) noexcept = default;
+    Operand& operator=(Operand&& val) noexcept = default;
+
+    std::variant<std::monostate, Reg, FReg, MDUReg, ShiftedReg, SImm, UImm, RelativeLabel, AbsoluteLabel, Size, FSize> value;
+};
+
+std::string format_as(Operand r);
+};
+
+class AxCore;
+
+class AxPrettyFormatter
+{
+public:
+    using label_map = std::unordered_map<uint64_t, std::string>;
+
+    explicit AxPrettyFormatter(const AxCore& core)
+        : m_core{&core}
+    {
+    }
+
+    // Must be called everytime
+    void set_base_address(uint64_t base_address) noexcept
+    {
+        m_base_address = base_address;
+    }
+
+    std::string relative_label(uint64_t offset);
+    std::string absolute_label(uint64_t address);
+
+    const label_map& labels() const noexcept
+    {
+        return m_labels;
+    }
+
+private:
+    std::string add_label(uint64_t address, const std::string& name)
+    {
+        return m_labels.emplace(address, name).first->second;
+    }
+
+    const AxCore* m_core;
+    label_map m_labels;
+    uint64_t m_base_address{};
 };
 
 class AxOpcodeInfo
@@ -141,11 +201,16 @@ public:
 
     template<typename... Args>
     explicit AxOpcodeInfo(const char* name, Args&&... args) noexcept
-        : m_name{extract_name(name)}
+        : m_name{name}
         , m_count{sizeof...(Args)}
     {
         static_assert(sizeof...(Args) <= operand_limit);
         fill_operands<0>(std::forward<Args>(args)...);
+    }
+
+    bool valid() const noexcept
+    {
+        return !(m_name.empty() && m_count == 0);
     }
 
     // Real string view, not always null-terminated!
@@ -158,6 +223,8 @@ public:
     {
         return std::span<const AxOpcodeArg::Operand>{m_operands.data(), m_count};
     }
+
+    std::string to_string(AxPrettyFormatter* formatter = nullptr) const;
 
 private:
     template<std::size_t index, typename T, typename... Args>
@@ -173,157 +240,11 @@ private:
         m_operands[index] = std::forward<T>(value);
     }
 
-    static constexpr std::string_view extract_name(std::string_view format)
-    {
-        return std::string_view{format.begin(), std::find_if(format.begin(), format.end(), [](char c)
-        {
-            return !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'));
-        })};
-    }
-
     static constexpr std::size_t operand_limit = 4;
 
     std::string_view m_name{};
     std::size_t m_count{};
     std::array<AxOpcodeArg::Operand, operand_limit> m_operands;
-};
-
-struct AxOpcode
-{
-    uint32_t value{};
-
-    constexpr AxOpcode() noexcept = default;
-
-    // implicit conversions
-    constexpr AxOpcode(uint32_t val) noexcept
-        : value{val}
-    {
-    }
-
-    constexpr operator uint32_t() const noexcept
-    {
-        return value;
-    }
-
-    uint32_t opcode() const noexcept
-    {
-        return (value >> 1) & 0x0Fu;
-    }
-
-    uint32_t unit() const noexcept
-    {
-        return (value >> 5) & 0x07u;
-    }
-
-    // opcode + unit
-    uint32_t operation() const noexcept
-    {
-        return (value >> 1) & 0x7Fu;
-    }
-
-    uint32_t size() const noexcept
-    {
-        return (value >> 8) & 0x03u;
-    }
-
-    uint32_t reg_c() const noexcept
-    {
-        return (value >> 14) & 0x3Fu;
-    }
-
-    uint32_t reg_b() const noexcept
-    {
-        return (value >> 20) & 0x3Fu;
-    }
-
-    uint32_t reg_a() const noexcept
-    {
-        return (value >> 26) & 0x3Fu;
-    }
-
-    bool alu_has_imm() const noexcept
-    {
-        return (value & 0x0400u) != 0;
-    }
-
-    uint64_t alu_shift() const noexcept
-    {
-        return (value >> 11) & 0x07u;
-    }
-
-    uint64_t alu_imm9() const noexcept
-    {
-        return (value >> 11) & 0x01FFu;
-    }
-
-    uint64_t ext_ins_imm1() const noexcept
-    {
-        return (value >> 8) & 0x3Fu;
-    }
-
-    uint64_t ext_ins_imm2() const noexcept
-    {
-        return (value >> 14) & 0x3Fu;
-    }
-
-    uint64_t alu_move_imm() const noexcept
-    {
-        return (value >> 8) & 0x0003FFFFu;
-    }
-
-    uint32_t mdu_pq() const noexcept
-    {
-        return (value >> 11) & 0x03U;
-    }
-
-    uint64_t lsu_shift() const noexcept
-    {
-        return (value >> 11) & 0x07u;
-    }
-
-    uint64_t lsu_imm10() const noexcept
-    {
-        return (value >> 10) & 0x03FFu;
-    }
-
-    uint64_t lsu_imm16() const noexcept
-    {
-        return (value >> 10) & 0x0FFFFu;
-    }
-
-    uint64_t moveix_imm24() const noexcept
-    {
-        return (value >> 8) & 0x00FFFFFFu;
-    }
-
-    uint64_t bru_imm23() const noexcept
-    {
-        return (value >> 9) & 0x007FFFFFu;
-    }
-
-    uint64_t bru_imm24() const noexcept
-    {
-        return (value >> 8) & 0x00FFFFFFu;
-    }
-
-    // return true if next opcode is bundled with this one.
-    bool is_bundle() const noexcept
-    {
-        return (value & 1) != 0;
-    }
-
-    bool is_moveix() const noexcept
-    {
-        return (value & 0xFE) == 0;
-    }
-
-    bool is_noop() const noexcept
-    {
-        return value == 0;
-    }
-
-    static std::pair<AxOpcodeInfo, AxOpcodeInfo> analyze(AxOpcode first, AxOpcode second);
-    static std::pair<std::string, std::string> to_string(AxOpcode first, AxOpcode second);
 };
 
 enum class SyscallId : uint64_t
@@ -333,7 +254,6 @@ enum class SyscallId : uint64_t
     stdio_write = 3, // fb, buf, size
 };
 
-//-------------------------------
 enum AxOpcodes : uint32_t
 {
     //------------- ALU(0) -----
@@ -525,6 +445,148 @@ enum AxOpcodes : uint32_t
     AX_EXE_VU_VECTOR8X2,
     AX_EXE_VU_INVX2
 };
-//-------------
+
+struct AxOpcode
+{
+    uint32_t value{};
+
+    constexpr AxOpcode() noexcept = default;
+
+    // implicit conversions
+    constexpr AxOpcode(uint32_t val) noexcept
+        : value{val}
+    {
+    }
+
+    constexpr operator uint32_t() const noexcept
+    {
+        return value;
+    }
+
+    uint32_t opcode() const noexcept
+    {
+        return (value >> 1) & 0x0Fu;
+    }
+
+    uint32_t unit() const noexcept
+    {
+        return (value >> 5) & 0x07u;
+    }
+
+    // opcode + unit
+    uint32_t operation() const noexcept
+    {
+        return (value >> 1) & 0x7Fu;
+    }
+
+    uint32_t size() const noexcept
+    {
+        return (value >> 8) & 0x03u;
+    }
+
+    uint32_t reg_c() const noexcept
+    {
+        return (value >> 14) & 0x3Fu;
+    }
+
+    uint32_t reg_b() const noexcept
+    {
+        return (value >> 20) & 0x3Fu;
+    }
+
+    uint32_t reg_a() const noexcept
+    {
+        return (value >> 26) & 0x3Fu;
+    }
+
+    bool alu_has_imm() const noexcept
+    {
+        return (value & 0x0400u) != 0;
+    }
+
+    uint64_t alu_shift() const noexcept
+    {
+        return (value >> 11) & 0x07u;
+    }
+
+    uint64_t alu_imm9() const noexcept
+    {
+        return (value >> 11) & 0x01FFu;
+    }
+
+    uint64_t ext_ins_imm1() const noexcept
+    {
+        return (value >> 8) & 0x3Fu;
+    }
+
+    uint64_t ext_ins_imm2() const noexcept
+    {
+        return (value >> 14) & 0x3Fu;
+    }
+
+    uint64_t alu_move_imm() const noexcept
+    {
+        return (value >> 8) & 0x0003FFFFu;
+    }
+
+    uint32_t mdu_pq() const noexcept
+    {
+        return (value >> 11) & 0x03U;
+    }
+
+    uint64_t lsu_shift() const noexcept
+    {
+        return (value >> 11) & 0x07u;
+    }
+
+    uint64_t lsu_imm10() const noexcept
+    {
+        return (value >> 10) & 0x03FFu;
+    }
+
+    uint64_t lsu_imm16() const noexcept
+    {
+        return (value >> 10) & 0x0FFFFu;
+    }
+
+    uint64_t moveix_imm24() const noexcept
+    {
+        return (value >> 8) & 0x00FFFFFFu;
+    }
+
+    uint64_t bru_imm23() const noexcept
+    {
+        return (value >> 9) & 0x007FFFFFu;
+    }
+
+    uint64_t bru_imm24() const noexcept
+    {
+        return (value >> 8) & 0x00FFFFFFu;
+    }
+
+    // return true if next opcode is bundled with this one.
+    bool is_bundle() const noexcept
+    {
+        return (value & 1) != 0;
+    }
+
+    bool is_moveix() const noexcept
+    {
+        return (value & 0xFE) == 0;
+    }
+
+    bool is_noop() const noexcept
+    {
+        return value == 0;
+    }
+
+    bool is_ret() const noexcept
+    {
+        // call lr, zero (reversed operand order)
+        return (operation() == AX_EXE_BRU_INDIRECTCALL && reg_a() == 63 && reg_b() == 31);
+    }
+
+    static std::pair<AxOpcodeInfo, AxOpcodeInfo> analyze(AxOpcode first, AxOpcode second);
+};
 
 #endif // !AXOPCODE_HPP_INCLUDED
