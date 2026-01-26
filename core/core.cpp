@@ -508,6 +508,58 @@ void AxCore::execute_alu(AxOpcode op, uint32_t slot, uint64_t imm24)
     }
 }
 
+namespace
+{
+
+template<typename T>
+std::pair<int64_t, int64_t> muls(T a, T b)
+{
+    const auto prod = static_cast<int64_t>(a) * static_cast<int64_t>(b);
+    constexpr int64_t bitsize = sizeof(T) * 8;
+    constexpr int64_t sizemask = (1ll << bitsize) - 1ll;
+    return std::make_pair(prod & sizemask, (prod >> bitsize) & sizemask);
+}
+
+template<>
+std::pair<int64_t, int64_t> muls(int64_t a, int64_t b)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    __int128_t prod = static_cast<__int128_t>(a) * static_cast<__int128_t>(b);
+    return std::make_pair(static_cast<uint64_t>(prod), static_cast<int64_t>(prod >> 64));
+#elif defined(_MSC_VER)
+    int64_t high{};
+    const auto low = _mul128(a, b, &high);
+    return std::make_pair(low, high);
+#else
+    #error "Unsupported compiler"
+#endif
+}
+
+template<typename T>
+std::pair<uint64_t, uint64_t> mulu(T a, T b)
+{
+    const auto prod = static_cast<uint64_t>(a) * static_cast<uint64_t>(b);
+    constexpr uint64_t bitsize = sizeof(T) * 8;
+    constexpr uint64_t sizemask = (1ll << bitsize) - 1ll;
+    return std::make_pair(prod & sizemask, (prod >> bitsize) & sizemask);
+}
+
+template<>
+std::pair<uint64_t, uint64_t> mulu(uint64_t a, uint64_t b)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    const auto prod = static_cast<__uint128_t>(a) * static_cast<__uint128_t>(b);
+    return std::make_pair(static_cast<uint64_t>(prod), static_cast<uint64_t>(prod >> 64));
+#elif defined(_MSC_VER)
+    uint64_t high{};
+    const auto low = _umul128(a, b, &high);
+    return std::make_pair(low, high);
+#else
+    #error "Unsupported compiler"
+#endif
+}
+}
+
 void AxCore::execute_mdu(AxOpcode op, uint64_t imm24)
 {
     // read reg B
@@ -541,6 +593,40 @@ void AxCore::execute_mdu(AxOpcode op, uint64_t imm24)
         return sext_bytesize(value, 1ull << op.size());
     };
 
+    const auto do_muls = [&]()
+    {
+        switch(op.size())
+        {
+        case 0:
+            return muls<int8_t>(tosi(sext(trunc(left()))), tosi(sext(trunc(right()))));
+        case 1:
+            return muls<int16_t>(tosi(sext(trunc(left()))), tosi(sext(trunc(right()))));
+        case 2:
+            return muls<int32_t>(tosi(sext(trunc(left()))), tosi(sext(trunc(right()))));
+        case 3:
+            return muls<int64_t>(tosi(sext(trunc(left()))), tosi(sext(trunc(right()))));
+        default:
+            ax_panic("Invalid size in mul opcode");
+        }
+    };
+
+    const auto do_mulu = [&]()
+    {
+        switch(op.size())
+        {
+        case 0:
+            return mulu<uint8_t>(trunc(left()), trunc(right()));
+        case 1:
+            return mulu<uint16_t>(trunc(left()), trunc(right()));
+        case 2:
+            return mulu<uint32_t>(trunc(left()), trunc(right()));
+        case 3:
+            return mulu<uint64_t>(trunc(left()), trunc(right()));
+        default:
+            ax_panic("Invalid size in mulu opcode");
+        }
+    };
+
     switch(op.operation())
     {
     case AX_EXE_MDU_DIV:
@@ -552,11 +638,19 @@ void AxCore::execute_mdu(AxOpcode op, uint64_t imm24)
         m_regs.mdu[1] = trunc(trunc(left()) % sext(trunc(right())));
         break;
     case AX_EXE_MDU_MUL:
-        m_regs.mdu[2] = trunc(tosi(sext(trunc(left()))) * tosi(sext(trunc(right()))));
+    {
+        const auto [low, high] = do_muls();
+        m_regs.mdu[2] = trunc(low);
+        m_regs.mdu[3] = trunc(high);
         break;
+    }
     case AX_EXE_MDU_MULU:
-        m_regs.mdu[2] = trunc(trunc(left()) * sext(trunc(right())));
+    {
+        const auto [low, high] = do_mulu();
+        m_regs.mdu[2] = trunc(low);
+        m_regs.mdu[3] = trunc(high);
         break;
+    }
     case AX_EXE_MDU_GETMD:
         m_regs.gpi[op.reg_a()] = m_regs.mdu[op.mdu_pq()];
         break;
