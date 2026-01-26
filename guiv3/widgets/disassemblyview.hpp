@@ -11,7 +11,7 @@ class DisassemblyView : public QWidget
 
 public:
     explicit DisassemblyView(QWidget* parent = nullptr);
-    ~DisassemblyView() override = default;
+    ~DisassemblyView() override;
 
     void setRunner(VMRunner& runner);
 
@@ -20,7 +20,7 @@ private:
     void onStatusChanged(VMRunner::Status status);
 
     struct Internals;
-    Internals* m_impl{};
+    std::unique_ptr<Internals> impl{};
 };
 
 #endif // DISASSEMBLYVIEW_HPP

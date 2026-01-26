@@ -347,58 +347,58 @@ struct DisassemblyView::Internals
 
 DisassemblyView::DisassemblyView(QWidget* parent)
     : QWidget{parent}
-    , m_impl{new Internals}
+    , impl{new Internals}
 {
     setWindowTitle(tr("DisassemblyView"));
 
-    QFont font;
-    font.setFamilies({QString::fromUtf8("Courier New")});
-    font.setBold(false);
-    m_impl->textEdit = new DisassemblyTextEdit{this};
-    m_impl->textEdit->setFont(font);
-    m_impl->textEdit->setReadOnly(true);
-    m_impl->textEdit->setBackgroundVisible(false);
-    m_impl->textEdit->setPlaceholderText(tr("Assembly will show here when paused..."));
+    QFont font{"Consolas"};
+    impl->textEdit = new DisassemblyTextEdit{this};
+    impl->textEdit->setFont(font);
+    impl->textEdit->setReadOnly(true);
+    impl->textEdit->setBackgroundVisible(false);
+    impl->textEdit->setPlaceholderText(tr("Assembly will show here when paused..."));
     // this is required to ensure one line == one info (label, instruction, ...)
-    m_impl->textEdit->setWordWrapMode(QTextOption::WrapMode::NoWrap);
+    impl->textEdit->setWordWrapMode(QTextOption::WrapMode::NoWrap);
 
-    m_impl->sidebar = new BreakpointSidebar{m_impl->textEdit};
-    m_impl->sidebar->setLineToAddress(m_impl->lineToAddress);
+    impl->sidebar = new BreakpointSidebar{impl->textEdit};
+    impl->sidebar->setLineToAddress(impl->lineToAddress);
 
     auto* horizontalLayout = new QHBoxLayout{this};
     horizontalLayout->setSpacing(0);
     horizontalLayout->setContentsMargins(2, 2, 2, 2);
-    horizontalLayout->addWidget(m_impl->sidebar);
-    horizontalLayout->addWidget(m_impl->textEdit);
+    horizontalLayout->addWidget(impl->sidebar);
+    horizontalLayout->addWidget(impl->textEdit);
 
-    m_impl->highligher = new Highlighter{m_impl->textEdit->document()};
+    impl->highligher = new Highlighter{impl->textEdit->document()};
 }
+
+DisassemblyView::~DisassemblyView() = default;
 
 void DisassemblyView::setRunner(VMRunner& runner)
 {
-    if(m_impl->runner) // disconned old runner in case it is still used elsewhere
+    if(impl->runner) // disconned old runner in case it is still used elsewhere
     {
-        m_impl->runner->disconnect(this);
+        impl->runner->disconnect(this);
     }
 
-    m_impl->runner = &runner;
-    m_impl->sidebar->setRunner(runner);
+    impl->runner = &runner;
+    impl->sidebar->setRunner(runner);
 
-    connect(m_impl->runner, &VMRunner::statusChanged, this, &DisassemblyView::onStatusChanged);
+    connect(impl->runner, &VMRunner::statusChanged, this, &DisassemblyView::onStatusChanged);
 
     disassemble(); // TODO: make this lazy
 }
 
 void DisassemblyView::disassemble()
 {
-    const AxCore* core = m_impl->runner->core();
+    const AxCore* core = impl->runner->core();
     if(!core)
     {
         return;
     }
 
-    m_impl->textEdit->clear();
-    m_impl->lineToAddress.clear();
+    impl->textEdit->clear();
+    impl->lineToAddress.clear();
 
     AxPrettyFormatter formatter{*core};
     const uint32_t* wram = reinterpret_cast<const uint32_t*>(core->memory().map(*core, AxMemory::WRAM_BEGIN));
@@ -430,8 +430,8 @@ void DisassemblyView::disassemble()
             const auto insertText = [&](const AxOpcodeInfo& info, uint64_t offset)
             {
                 formatter.set_base_address(programAddress + offset);
-                m_impl->textEdit->appendPlainText(QString{"0x%1\t%2"}.arg(wramAddress + offset, 16, 16, u'0').arg(info.to_string(&formatter)));
-                m_impl->lineToAddress.emplace_back(wramAddress + offset);
+                impl->textEdit->appendPlainText(QString{"0x%1\t%2"}.arg(wramAddress + offset, 16, 16, u'0').arg(info.to_string(&formatter)));
+                impl->lineToAddress.emplace_back(wramAddress + offset);
                 currentOffset += 4;
             };
 
@@ -449,18 +449,18 @@ void DisassemblyView::disassemble()
         const auto realAddress = AxMemory::WRAM_BEGIN + address;
 
         // Find the line number where this address appears
-        auto it = std::lower_bound(m_impl->lineToAddress.begin(), m_impl->lineToAddress.end(), realAddress);
-        if(it != m_impl->lineToAddress.end() && *it == realAddress)
+        auto it = std::lower_bound(impl->lineToAddress.begin(), impl->lineToAddress.end(), realAddress);
+        if(it != impl->lineToAddress.end() && *it == realAddress)
         {
-            const auto lineNumber = std::distance(m_impl->lineToAddress.begin(), it);
+            const auto lineNumber = std::distance(impl->lineToAddress.begin(), it);
 
             // Get the block at this line and insert the label before it
-            QTextCursor cursor{m_impl->textEdit->document()->findBlockByLineNumber(lineNumber)};
+            QTextCursor cursor{impl->textEdit->document()->findBlockByLineNumber(lineNumber)};
             cursor.movePosition(QTextCursor::StartOfBlock);
             cursor.insertText(QString{"%1:\n"}.arg(name));
 
             // Update lineToAddress mapping: insert the address for the new label line
-            m_impl->lineToAddress.insert(it, realAddress);
+            impl->lineToAddress.insert(it, realAddress);
         }
     }
 }
@@ -469,13 +469,13 @@ void DisassemblyView::onStatusChanged(VMRunner::Status status)
 {
     if(status == VMRunner::Status::Paused)
     {
-        const AxCore* core = m_impl->runner->core();
+        const AxCore* core = impl->runner->core();
         assert(core && "Impossible path");
 
         const auto address = AxCore::pc_to_wram(core->registers().pc);
         // addresses are implicitely sorted
-        auto it = std::lower_bound(m_impl->lineToAddress.begin(), m_impl->lineToAddress.end(), address);
-        if(it != m_impl->lineToAddress.end() && *it == address)
+        auto it = std::lower_bound(impl->lineToAddress.begin(), impl->lineToAddress.end(), address);
+        if(it != impl->lineToAddress.end() && *it == address)
         {
             const auto* wram = static_cast<const uint32_t*>(core->memory().map(*core, address));
 
@@ -518,15 +518,15 @@ void DisassemblyView::onStatusChanged(VMRunner::Status status)
                 comment = "no information";
             }
 
-            const auto lineNumber = std::distance(m_impl->lineToAddress.begin(), it);
-            m_impl->highligher->setDebugComment(lineNumber, comment);
-            const auto block = m_impl->textEdit->document()->findBlockByLineNumber(lineNumber);
-            m_impl->textEdit->setTextCursor(QTextCursor{block});
+            const auto lineNumber = std::distance(impl->lineToAddress.begin(), it);
+            impl->highligher->setDebugComment(lineNumber, comment);
+            const auto block = impl->textEdit->document()->findBlockByLineNumber(lineNumber);
+            impl->textEdit->setTextCursor(QTextCursor{block});
         }
     }
     else
     {
-        m_impl->highligher->clearDebugComment();
+        impl->highligher->clearDebugComment();
     }
 }
 

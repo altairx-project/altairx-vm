@@ -73,6 +73,7 @@ void MainWindow::loadHostedProgram()
     if(const auto* core{m_runner->core()}; core)
     {
         ui->disassemblyView->setRunner(*m_runner);
+        ui->registerView->setRunner(*m_runner);
     }
 }
 
