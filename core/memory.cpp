@@ -56,3 +56,9 @@ void* AxMemory::map(AxCore& core, uint64_t addr) noexcept
     const auto offset = addr & mask;
     return base + offset;
 }
+
+const void* AxMemory::map(const AxCore& core, uint64_t addr) const noexcept
+{
+    // The only thing that matter is that the output pointer is const
+    return const_cast<AxMemory*>(this)->map(const_cast<AxCore&>(core), addr);
+}

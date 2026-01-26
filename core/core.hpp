@@ -18,13 +18,13 @@
 
 #include "opcode.hpp"
 #include "panic.hpp"
-
-class AxMemory;
+#include "memory.hpp"
 
 class AxCore
 {
 public:
     using Register = uint32_t;
+    static constexpr Register REG_LR = 31;
     static constexpr Register REG_ACC = 56;
     static constexpr Register REG_BA1 = 57;
     static constexpr Register REG_BA2 = 58;
@@ -148,13 +148,13 @@ public:
         {
             if(AxOpcode{opcode1}.is_bundle())
             {
-                auto [first, second] = AxOpcode::to_string(opcode1, opcode2);
-                std::cout << first << " ; " << second << std::endl;
+                auto [first, second] = AxOpcode::analyze(opcode1, opcode2);
+                std::cout << first.to_string(nullptr) << " ; " << second.to_string(nullptr) << std::endl;
             }
             else
             {
-                auto first = AxOpcode::to_string(opcode1, {}).first;
-                std::cout << first << std::endl;
+                auto first = AxOpcode::analyze(opcode1, {}).first;
+                std::cout << first.to_string(nullptr) << std::endl;
             }
         }
 #endif
@@ -222,6 +222,7 @@ public:
     struct Symbol
     {
         uint64_t address{};
+        uint64_t size{};
         std::string name{};
     };
 
@@ -239,15 +240,26 @@ public:
     {
         uint64_t address{};
         bool enabled{true};
+        bool single_shot{false};
     };
 
-    void add_breakpoint(uint64_t address, bool enabled = true);
-    void set_breakpoint_enabled(uint64_t address, bool enabled);
+    // if breakpoint at address already exists, it will be enabled or disabled based on `enabled`.
+    // if breakpoint at address already exists, it will not become single shot even if `single_shot` is true.
+    void add_breakpoint(Breakpoint bp);
+
     void remove_breakpoint(uint64_t address);
+    void remove_breakpoint(const Breakpoint* bp)
+    {
+        const auto index = std::distance(std::as_const(m_breakpoints).data(), bp);
+        m_breakpoints.erase(m_breakpoints.begin() + index);
+    }
+
+    Breakpoint* breakpoint_at(uint64_t address);
+    const Breakpoint* breakpoint_at(uint64_t address) const;
 
     // Return a breakpoint if current PC is on it.
     // Note that it is up to caller to check if breakpoint is enabled!
-    const Breakpoint* hit_breakpoint()
+    const Breakpoint* hit_breakpoint() const
     {
         // Shortcut, this function is inline for this (same as syscall)
         if(m_breakpoints.empty()) [[likely]]
@@ -255,15 +267,7 @@ public:
             return nullptr;
         }
 
-        const auto real_pc = m_regs.pc & 0x7FFFFFFF;
-        const auto pc_addr = real_pc * 4ull;
-        auto it = get_breakpoint(pc_addr);
-        if(it != m_breakpoints.end())
-        {
-            return std::to_address(it); // we need to break!
-        }
-
-        return nullptr;
+        return breakpoint_at(pc_to_wram(m_regs.pc));
     }
 
     std::span<const Breakpoint> breakpoints() const noexcept
@@ -271,9 +275,17 @@ public:
         return m_breakpoints;
     }
 
-private:
-    std::vector<Breakpoint>::iterator get_breakpoint(uint64_t address);
+    static uint64_t pc_to_wram(uint64_t pc) noexcept
+    {
+        return AxMemory::WRAM_BEGIN + (pc & 0x7FFFFFFF) * 4ull;
+    }
 
+    static uint64_t pc_from_wram(uint64_t address) noexcept
+    {
+        return (address - AxMemory::WRAM_BEGIN) / 4ull;
+    }
+
+private:
     void do_store(uint64_t src, uint64_t addr, uint32_t size);
     uint64_t do_load(uint64_t addr, uint32_t size);
 

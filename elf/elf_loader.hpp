@@ -12,8 +12,8 @@ class AxCore;
 
 // load an ELF file and put PC at specified entry point location
 // This function panics on error!
-void ax_load_elf_program(AxCore& core, const std::filesystem::path& path, std::string_view entry_point_name);
-void ax_load_elf_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view entry_point_name);
+AxELFFile ax_load_elf_program(AxCore& core, const std::filesystem::path& path, std::string_view entry_point_name);
+AxELFFile ax_load_elf_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view entry_point_name);
 
 // load an ELF file
 // This function panics on error!
@@ -36,7 +36,7 @@ void ax_load_elf_program(AxCore& core, const void* buffer, size_t buffer_size, s
 //    syscall
 //    nop
 // ```
-void ax_load_elf_hosted_program(AxCore& core, const std::filesystem::path& path, std::span<const std::string_view> argv);
-void ax_load_elf_hosted_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view program_name, std::span<const std::string_view> argv);
+AxELFFile ax_load_elf_hosted_program(AxCore& core, const std::filesystem::path& path, std::span<const std::string_view> argv);
+AxELFFile ax_load_elf_hosted_program(AxCore& core, const void* buffer, size_t buffer_size, std::string_view program_name, std::span<const std::string_view> argv);
 
 #endif

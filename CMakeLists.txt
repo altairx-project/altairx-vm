@@ -8,7 +8,8 @@ project(AltairXVM
 option(BUILD_TESTING "If ON, build VM tests" OFF)
 option(AltairXVM_USE_LTO "If ON, try to enable LTO" ON)
 option(AltairXVM_ELF_SUPPORT "If ON, try to find LLVM to enable ELF support" ON)
-option(AltairXVM_BUILD_GUI "If ON, build AltairXVM debugger. Requires SDL3." OFF)
+option(AltairXVM_BUILD_GUI "If ON, build AltairXVM ImGUI interface. Requires SDL3." OFF)
+option(AltairXVM_BUILD_QTGUI "If ON, build AltairXVM Qt interface. Requires Qt6." OFF)
 
 # Optional LTO support
 if(AltairXVM_USE_LTO)
@@ -38,8 +39,11 @@ FetchContent_MakeAvailable(fmt)
 add_subdirectory(core)
 
 if(AltairXVM_BUILD_GUI)
-    find_package(SDL3 CONFIG REQUIRED)
-    add_subdirectory(gui)
+    #find_package(SDL3 CONFIG REQUIRED)
+    #add_subdirectory(gui)
+endif()
+if(AltairXVM_BUILD_QTGUI)
+    add_subdirectory(guiv3)
 endif()
 
 add_subdirectory(vm)

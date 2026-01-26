@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cassert>
 #include <vector>
+#include <utility>
 #include <iostream>
 
 #include "memory.hpp"
@@ -20,42 +21,34 @@ AxCore::AxCore(AxMemory& memory)
 {
 }
 
-void AxCore::add_breakpoint(uint64_t address, bool enabled)
+void AxCore::add_breakpoint(Breakpoint new_bp)
 {
-    const auto it = std::lower_bound(m_breakpoints.begin(), m_breakpoints.end(), address, [](auto&& left, auto&& right)
+    // insert at the right position to keep them ordered
+    const auto it = std::lower_bound(m_breakpoints.begin(), m_breakpoints.end(), new_bp.address, [](auto&& left, auto&& right)
     {
         return left.address < right;
     });
 
     // check if it already exists
-    if(it != m_breakpoints.end() && it->address == address)
+    if(it != m_breakpoints.end() && it->address == new_bp.address)
     {
-        it->enabled = enabled; // update enable status
+        it->enabled = new_bp.enabled;                            // update enable status
+        it->single_shot = it->single_shot || new_bp.single_shot; // do not make it single_shot if it wasn't
         return;
     }
 
-    m_breakpoints.insert(it, Breakpoint{address, enabled});
-}
-
-void AxCore::set_breakpoint_enabled(uint64_t address, bool enabled)
-{
-    auto it = get_breakpoint(address);
-    if(it != m_breakpoints.end())
-    {
-        it->enabled = enabled;
-    }
+    m_breakpoints.insert(it, new_bp);
 }
 
 void AxCore::remove_breakpoint(uint64_t address)
 {
-    auto it = get_breakpoint(address);
-    if(it != m_breakpoints.end())
+    if(auto* bp = breakpoint_at(address); bp)
     {
-        m_breakpoints.erase(it);
+        m_breakpoints.erase(m_breakpoints.begin() + std::distance(m_breakpoints.data(), bp));
     }
 }
 
-std::vector<AxCore::Breakpoint>::iterator AxCore::get_breakpoint(uint64_t address)
+AxCore::Breakpoint* AxCore::breakpoint_at(uint64_t address)
 {
     const auto it = std::lower_bound(m_breakpoints.begin(), m_breakpoints.end(), address, [](auto&& left, auto&& right)
     {
@@ -64,10 +57,25 @@ std::vector<AxCore::Breakpoint>::iterator AxCore::get_breakpoint(uint64_t addres
 
     if(it != m_breakpoints.end() && it->address == address)
     {
-        return it;
+        return std::to_address(it);
     }
 
-    return m_breakpoints.end();
+    return nullptr;
+}
+
+const AxCore::Breakpoint* AxCore::breakpoint_at(uint64_t address) const
+{
+    const auto it = std::lower_bound(m_breakpoints.begin(), m_breakpoints.end(), address, [](auto&& left, auto&& right)
+    {
+        return left.address < right;
+    });
+
+    if(it != m_breakpoints.end() && it->address == address)
+    {
+        return std::to_address(it);
+    }
+
+    return nullptr;
 }
 
 void AxCore::do_store(uint64_t src, uint64_t addr, uint32_t size)
@@ -500,6 +508,58 @@ void AxCore::execute_alu(AxOpcode op, uint32_t slot, uint64_t imm24)
     }
 }
 
+namespace
+{
+
+template<typename T>
+std::pair<int64_t, int64_t> muls(T a, T b)
+{
+    const auto prod = static_cast<int64_t>(a) * static_cast<int64_t>(b);
+    constexpr int64_t bitsize = sizeof(T) * 8;
+    constexpr int64_t sizemask = (1ll << bitsize) - 1ll;
+    return std::make_pair(prod & sizemask, (prod >> bitsize) & sizemask);
+}
+
+template<>
+std::pair<int64_t, int64_t> muls(int64_t a, int64_t b)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    __int128_t prod = static_cast<__int128_t>(a) * static_cast<__int128_t>(b);
+    return std::make_pair(static_cast<uint64_t>(prod), static_cast<int64_t>(prod >> 64));
+#elif defined(_MSC_VER)
+    int64_t high{};
+    const auto low = _mul128(a, b, &high);
+    return std::make_pair(low, high);
+#else
+    #error "Unsupported compiler"
+#endif
+}
+
+template<typename T>
+std::pair<uint64_t, uint64_t> mulu(T a, T b)
+{
+    const auto prod = static_cast<uint64_t>(a) * static_cast<uint64_t>(b);
+    constexpr uint64_t bitsize = sizeof(T) * 8;
+    constexpr uint64_t sizemask = (1ll << bitsize) - 1ll;
+    return std::make_pair(prod & sizemask, (prod >> bitsize) & sizemask);
+}
+
+template<>
+std::pair<uint64_t, uint64_t> mulu(uint64_t a, uint64_t b)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    const auto prod = static_cast<__uint128_t>(a) * static_cast<__uint128_t>(b);
+    return std::make_pair(static_cast<uint64_t>(prod), static_cast<uint64_t>(prod >> 64));
+#elif defined(_MSC_VER)
+    uint64_t high{};
+    const auto low = _umul128(a, b, &high);
+    return std::make_pair(low, high);
+#else
+    #error "Unsupported compiler"
+#endif
+}
+}
+
 void AxCore::execute_mdu(AxOpcode op, uint64_t imm24)
 {
     // read reg B
@@ -533,6 +593,40 @@ void AxCore::execute_mdu(AxOpcode op, uint64_t imm24)
         return sext_bytesize(value, 1ull << op.size());
     };
 
+    const auto do_muls = [&]()
+    {
+        switch(op.size())
+        {
+        case 0:
+            return muls<int8_t>(tosi(sext(trunc(left()))), tosi(sext(trunc(right()))));
+        case 1:
+            return muls<int16_t>(tosi(sext(trunc(left()))), tosi(sext(trunc(right()))));
+        case 2:
+            return muls<int32_t>(tosi(sext(trunc(left()))), tosi(sext(trunc(right()))));
+        case 3:
+            return muls<int64_t>(tosi(sext(trunc(left()))), tosi(sext(trunc(right()))));
+        default:
+            ax_panic("Invalid size in mul opcode");
+        }
+    };
+
+    const auto do_mulu = [&]()
+    {
+        switch(op.size())
+        {
+        case 0:
+            return mulu<uint8_t>(trunc(left()), trunc(right()));
+        case 1:
+            return mulu<uint16_t>(trunc(left()), trunc(right()));
+        case 2:
+            return mulu<uint32_t>(trunc(left()), trunc(right()));
+        case 3:
+            return mulu<uint64_t>(trunc(left()), trunc(right()));
+        default:
+            ax_panic("Invalid size in mulu opcode");
+        }
+    };
+
     switch(op.operation())
     {
     case AX_EXE_MDU_DIV:
@@ -544,11 +638,19 @@ void AxCore::execute_mdu(AxOpcode op, uint64_t imm24)
         m_regs.mdu[1] = trunc(trunc(left()) % sext(trunc(right())));
         break;
     case AX_EXE_MDU_MUL:
-        m_regs.mdu[2] = trunc(tosi(sext(trunc(left()))) * tosi(sext(trunc(right()))));
+    {
+        const auto [low, high] = do_muls();
+        m_regs.mdu[2] = trunc(low);
+        m_regs.mdu[3] = trunc(high);
         break;
+    }
     case AX_EXE_MDU_MULU:
-        m_regs.mdu[2] = trunc(trunc(left()) * sext(trunc(right())));
+    {
+        const auto [low, high] = do_mulu();
+        m_regs.mdu[2] = trunc(low);
+        m_regs.mdu[3] = trunc(high);
         break;
+    }
     case AX_EXE_MDU_GETMD:
         m_regs.gpi[op.reg_a()] = m_regs.mdu[op.mdu_pq()];
         break;

@@ -22,13 +22,6 @@
 namespace
 {
 
-enum class SyscallId : uint64_t
-{
-    exit = 1,        // code
-    stdio_read = 2,  // fb, buf, size
-    stdio_write = 3, // fb, buf, size
-};
-
 std::FILE* id_to_file(uint64_t id)
 {
     switch(id)
@@ -158,7 +151,7 @@ int AltairX::run(AxExecutionMode mode)
             if(delta > 1.0) // ...and display if more than one second elapsed...
             {
                 double frequency = static_cast<double>(cycles) / delta;
-                std::cout << "Frequence : " << frequency / 1'000'000.0 << "MHz\n"; // no flush
+                std::cout << "Frequency : " << frequency / 1'000'000.0 << "MHz\n"; // no flush
 
                 tp1 = clock::now();
                 cycles = 0;
